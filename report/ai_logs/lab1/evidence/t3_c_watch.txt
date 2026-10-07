@@ -1,0 +1,10 @@
+The target architecture is set to "riscv:rv64".
+0x0000000000001000 in ?? ()
+Hardware watchpoint 1: *(int *)0x80200000
+Breakpoint 2 at 0x80200000: file kern/init/entry.S, line 7.
+
+Breakpoint 2, kern_entry () at kern/init/entry.S:7
+7	    la sp, bootstacktop
+pc             0x80200000	0x80200000 <kern_entry>
+0x80200000 <kern_entry>:	0x0001011300003117	0x051300003517a009
+[Inferior 1 (process 1) killed]

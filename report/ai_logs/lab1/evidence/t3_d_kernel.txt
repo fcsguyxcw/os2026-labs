@@ -1,0 +1,70 @@
+The target architecture is set to "riscv:rv64".
+0x0000000000001000 in ?? ()
+Breakpoint 1 at 0x80200000: file kern/init/entry.S, line 7.
+
+Breakpoint 1, kern_entry () at kern/init/entry.S:7
+7	    la sp, bootstacktop
+pc             0x80200000	0x80200000 <kern_entry>
+sp             0x80046eb0	0x80046eb0
+ra             0x8000ae9a	0x8000ae9a
+a0             0x0	0
+a1             0x87e00000	2279604224
+=> 0x80200000 <kern_entry>:	auipc	sp,0x3
+   0x80200004 <kern_entry+4>:	mv	sp,sp
+   0x80200008 <kern_entry+8>:	j	0x8020000a <kern_init>
+   0x8020000a <kern_init>:	auipc	a0,0x3
+$1 = 0x80201000
+$2 = 0x80203000
+0x80046eb0:	0x000000000000007f	0x0000000080200000
+0x80046ec0:	0x0000000087e00000	0x0000000000000000
+0x80046ed0:	0x0000000080047088	0x0000000000000001
+0x80046ee0:	0x0000000080046f30	0x000000008000b584
+0x0000000080200004 in kern_entry () at kern/init/entry.S:7
+7	    la sp, bootstacktop
+pc             0x80200004	0x80200004 <kern_entry+4>
+sp             0x80203000	0x80203000 <SBI_CONSOLE_PUTCHAR>
+9	    tail kern_init
+pc             0x80200008	0x80200008 <kern_entry+8>
+sp             0x80203000	0x80203000 <SBI_CONSOLE_PUTCHAR>
+kern_init () at kern/init/init.c:8
+8	    memset(edata, 0, end - edata);
+pc             0x8020000a	0x8020000a <kern_init>
+sp             0x80203000	0x80203000 <SBI_CONSOLE_PUTCHAR>
+ra             0x8000ae9a	0x8000ae9a
+#0  kern_init () at kern/init/init.c:8
+#1  0x000000008000ae9a in ?? ()
+=> 0x8020000a <kern_init>:	auipc	a0,0x3
+   0x8020000e <kern_init+4>:	addi	a0,a0,-2
+   0x80200012 <kern_init+8>:	auipc	a2,0x3
+   0x80200016 <kern_init+12>:	addi	a2,a2,-10
+   0x8020001a <kern_init+16>:	addi	sp,sp,-16
+   0x8020001c <kern_init+18>:	li	a1,0
+   0x8020001e <kern_init+20>:	sub	a2,a2,a0
+   0x80200020 <kern_init+22>:	sd	ra,8(sp)
+Breakpoint 2 at 0x80200478: file libs/sbi.c, line 18.
+
+Breakpoint 2, sbi_console_putchar (ch=40 '(') at libs/sbi.c:33
+33	    sbi_call(SBI_CONSOLE_PUTCHAR, ch, 0, 0);
+a0             0x28	40
+#0  sbi_console_putchar (ch=40 '(') at libs/sbi.c:33
+#1  0x0000000080200090 in cons_putc (c=<optimized out>) at kern/driver/console.c:14
+#2  0x0000000080200048 in cputch (c=<optimized out>, cnt=0x80202f94) at kern/libs/stdio.c:12
+#3  0x00000000802003c8 in vprintfmt (putch=putch@entry=0x8020003c <cputch>, putdat=putdat@entry=0x80202f94, fmt=0x802004e2 "\n\n", fmt@entry=0x802004e0 "%s\n\n", ap=0x80202fc0, ap@entry=0x80202fb8) at libs/printfmt.c:217
+#4  0x0000000080200082 in vcprintf (ap=0x80202fb8, fmt=0x802004e0 "%s\n\n") at kern/libs/stdio.c:27
+#5  cprintf (fmt=fmt@entry=0x802004e0 "%s\n\n") at kern/libs/stdio.c:41
+#6  0x000000008020003a in kern_init () at kern/init/init.c:11
+#7  0x000000008000ae9a in ?? ()
+Temporary breakpoint 3 at 0x8020048a: file libs/sbi.c, line 18.
+
+Temporary breakpoint 3, 0x000000008020048a in sbi_call (arg2=0, arg1=0, arg0=<optimized out>, sbi_type=1) at libs/sbi.c:18
+18	    __asm__ volatile (
+pc             0x8020048a	0x8020048a <sbi_console_putchar+18>
+a0             0x28	40
+a1             0x0	0
+a2             0x0	0
+a7             0x1	1
+=> 0x8020048a <sbi_console_putchar+18>:	ecall
+   0x8020048e <sbi_console_putchar+22>:	mv	a5,a0
+   0x80200490 <sbi_console_putchar+24>:	ret
+   0x80200492 <strnlen>:	li	a5,0
+[Inferior 1 (process 1) killed]

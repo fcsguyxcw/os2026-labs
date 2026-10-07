@@ -1,0 +1,80 @@
+=== Stage A: /home/wesly/os2026-t3-a.gdb ===
+set pagination off
+set confirm off
+file bin/kernel
+set arch riscv:rv64
+target remote localhost:1234
+i r pc
+x/10i $pc
+x/6gx 0x1000
+set $reset_steps = 0
+while $pc >= 0x1000 && $pc < 0x2000 && $reset_steps < 16
+x/i $pc
+si
+i r pc t0 a0 a1 a2
+set $reset_steps = $reset_steps + 1
+end
+x/2gx 0x80200000
+kill
+
+=== Stage B: /home/wesly/os2026-t3-b.gdb ===
+set pagination off
+set confirm off
+file bin/kernel
+set arch riscv:rv64
+target remote localhost:1234
+b *0x80000000
+c
+i r pc a0 a1 a2
+x/12i $pc
+kill
+
+=== Stage C: /home/wesly/os2026-t3-c.gdb ===
+set pagination off
+set confirm off
+file bin/kernel
+set arch riscv:rv64
+target remote localhost:1234
+watch *(int *)0x80200000
+b *0x80200000
+c
+i r pc
+x/2gx 0x80200000
+kill
+
+=== Stage D: /home/wesly/os2026-t3-d.gdb ===
+set pagination off
+set confirm off
+file bin/kernel
+set arch riscv:rv64
+target remote localhost:1234
+b *0x80200000
+c
+i r pc sp ra a0 a1
+x/4i $pc
+p/x &bootstack
+p/x &bootstacktop
+python
+try:
+    gdb.execute('x/8gx $sp')
+except gdb.error as error:
+    gdb.write(str(error) + '\n', gdb.STDERR)
+end
+si
+i r pc sp
+si
+i r pc sp
+si
+i r pc sp ra
+bt
+x/8i $pc
+b sbi_console_putchar
+c
+i r a0
+bt
+tbreak *0x8020048a
+c
+i r pc a0 a1 a2 a7
+x/4i $pc
+kill
+

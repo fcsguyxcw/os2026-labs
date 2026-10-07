@@ -1,0 +1,22 @@
+The target architecture is set to "riscv:rv64".
+0x0000000000001000 in ?? ()
+Breakpoint 1 at 0x80000000
+
+Breakpoint 1, 0x0000000080000000 in ?? ()
+pc             0x80000000	0x80000000
+a0             0x0	0
+a1             0x87e00000	2279604224
+a2             0x1028	4136
+=> 0x80000000:	add	s0,a0,zero
+   0x80000004:	add	s1,a1,zero
+   0x80000008:	add	s2,a2,zero
+   0x8000000c:	jal	0x80000580
+   0x80000010:	add	a6,a0,zero
+   0x80000014:	add	a0,s0,zero
+   0x80000018:	add	a1,s1,zero
+   0x8000001c:	add	a2,s2,zero
+   0x80000020:	li	a7,-1
+   0x80000022:	beq	a6,a7,0x8000002a
+   0x80000026:	bne	a0,a6,0x800000da
+   0x8000002a:	auipc	a6,0x40
+[Inferior 1 (process 1) killed]
