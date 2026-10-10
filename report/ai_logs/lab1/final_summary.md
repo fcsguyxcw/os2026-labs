@@ -9,7 +9,6 @@ Tests:
 - `make grade`：未执行，压缩包缺 tools/grade.sh
 
 Remaining Problems:
-- 报告中学号、姓名待填写。
 - 截图为证据原文渲染图，不是桌面截屏。
 - 旧环境（QEMU 4.1.1 / OpenSBI v0.4）行为未实测，报告中已标注。
 
