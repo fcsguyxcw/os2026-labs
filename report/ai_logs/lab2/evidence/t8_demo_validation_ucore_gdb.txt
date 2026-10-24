@@ -1,0 +1,7 @@
+The target architecture is set to "riscv:rv64".
+0x0000000000001000 in ?? ()
+$1 = 0xffffffffc0207008
+$2 = 0xffffffffc02000d6
+Cannot execute this command while the target is running.
+Use the "interrupt" command to stop the target
+and then try again.

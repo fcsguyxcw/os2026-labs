@@ -1,5 +1,11 @@
 #include <default_pmm.h>
 #include <best_fit_pmm.h>
+#ifdef LAB2_PMM_BUDDY
+#include <buddy_pmm.h>
+#endif
+#ifdef LAB2_SLUB_TEST
+#include <slub.h>
+#endif
 #include <defs.h>
 #include <error.h>
 #include <memlayout.h>
@@ -34,7 +40,12 @@ static void check_alloc_page(void);
 
 // init_pmm_manager - initialize a pmm_manager instance
 static void init_pmm_manager(void) {
+#ifdef LAB2_PMM_BUDDY
+    // lab2 扩展任务：make DEFS=-DLAB2_PMM_BUDDY 时改用 Buddy System
+    pmm_manager = &buddy_pmm_manager;
+#else
     pmm_manager = &best_fit_pmm_manager;
+#endif
     cprintf("memory management: %s\n", pmm_manager->name);
     pmm_manager->init();
 }
@@ -123,6 +134,12 @@ void pmm_init(void) {
 
     // use pmm->check to verify the correctness of the alloc/free function in a pmm
     check_alloc_page();
+
+#ifdef LAB2_SLUB_TEST
+    // lab2 扩展任务：make DEFS=-DLAB2_SLUB_TEST 时测试 SLUB
+    slub_init();
+    slub_check();
+#endif
 
     extern char boot_page_table_sv39[];
     satp_virtual = (pte_t*)boot_page_table_sv39;

@@ -1,0 +1,52 @@
+===== M1 =====
+@@ -138,7 +138,7 @@
+         set_page_ref(p, 0);
+     }
+ 
+-    while (order < MAX_ORDER) {
++    while (0 && order < MAX_ORDER) {
+         size_t size = (size_t)1 << order;
+         size_t buddy_idx = idx ^ size;
+         if (buddy_idx >= region_pages || size > region_pages - buddy_idx) {
+memory management: buddy_pmm_manager
+buddy_check: initial state and invariants
+buddy_check: rounding and internal fragmentation
+buddy_check: borrowing initial blocks
+kernel panic at kern/mm/buddy_pmm.c:304:
+    assertion failed: free_areas[k].nr_blocks == initial_counts[k]
+qemu-system-riscv64: terminating on signal 15 from pid 130 (make)
+===== M2 =====
+@@ -112,7 +112,8 @@
+     buddy_remove(base, found);
+     while (found > order) {
+         found --;
+-        buddy_insert(base + ((size_t)1 << found), found);
++        buddy_insert(base, found);
++        base = base + ((size_t)1 << found);
+     }
+     base->property = order;
+     // 向上取整多出的页面属于内部碎片，调用者释放时须随整块一起归还。
+memory management: buddy_pmm_manager
+buddy_check: initial state and invariants
+buddy_check: rounding and internal fragmentation
+buddy_check: borrowing initial blocks
+buddy_check: splitting at every level
+kernel panic at kern/mm/buddy_pmm.c:325:
+    assertion failed: first == isolated
+qemu-system-riscv64: terminating on signal 15 from pid 130 (make)
+===== M3 =====
+@@ -116,7 +116,7 @@
+     }
+     base->property = order;
+     // 向上取整多出的页面属于内部碎片，调用者释放时须随整块一起归还。
+-    nr_free -= (size_t)1 << order;
++    nr_free -= n;
+     return base;
+ }
+ 
+memory management: buddy_pmm_manager
+buddy_check: initial state and invariants
+buddy_check: rounding and internal fragmentation
+kernel panic at kern/mm/buddy_pmm.c:229:
+    assertion failed: before >= size && nr_free == before - size
+qemu-system-riscv64: terminating on signal 15 from pid 130 (make)

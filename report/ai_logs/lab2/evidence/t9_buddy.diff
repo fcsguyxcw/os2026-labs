@@ -1,0 +1,186 @@
+diff --git a/code/kern/mm/buddy_pmm.c b/code/kern/mm/buddy_pmm.c
+new file mode 100644
+index 0000000..fb6cb86
+--- /dev/null
++++ b/code/kern/mm/buddy_pmm.c
+@@ -0,0 +1,180 @@
++#include <buddy_pmm.h>
++#include <list.h>
++#include <stdio.h>
++
++// 2^15 个 4KiB 页覆盖 128MiB；对齐和伙伴计算均以管理区域起点为基准。
++#define MAX_ORDER 15
++
++static struct {
++    list_entry_t free_list;
++    size_t nr_blocks;
++} free_areas[MAX_ORDER + 1];
++
++static struct Page *region_base;
++static size_t region_pages;
++static size_t nr_free;
++
++// property 记录阶数：空闲块头置 PG_property，已分配块头清除此位。
++// 块内其余页不置 PG_property；order 0 与普通页用块头标志区分。
++static unsigned int
++buddy_order(size_t n) {
++    unsigned int order = 0;
++    while (order < MAX_ORDER && ((size_t)1 << order) < n) {
++        order ++;
++    }
++    return ((size_t)1 << order) < n ? MAX_ORDER + 1 : order;
++}
++
++static void
++buddy_insert(struct Page *base, unsigned int order) {
++    assert(order <= MAX_ORDER);
++    assert(!PageProperty(base));
++    list_entry_t *head = &free_areas[order].free_list;
++    list_entry_t *le = list_next(head);
++    while (le != head && le2page(le, page_link) < base) {
++        le = list_next(le);
++    }
++    base->property = order;
++    SetPageProperty(base);
++    list_add_before(le, &base->page_link);
++    free_areas[order].nr_blocks ++;
++}
++
++static void
++buddy_remove(struct Page *base, unsigned int order) {
++    assert(order <= MAX_ORDER);
++    assert(PageProperty(base) && base->property == order);
++    assert(free_areas[order].nr_blocks > 0);
++    list_del(&base->page_link);
++    free_areas[order].nr_blocks --;
++    ClearPageProperty(base);
++    base->property = 0;
++}
++
++static void
++buddy_init(void) {
++    for (unsigned int order = 0; order <= MAX_ORDER; order ++) {
++        list_init(&free_areas[order].free_list);
++        free_areas[order].nr_blocks = 0;
++    }
++    nr_free = 0;
++    region_base = NULL;
++    region_pages = 0;
++}
++
++static void
++buddy_init_memmap(struct Page *base, size_t n) {
++    assert(n > 0);
++    if (region_base != NULL) {
++        panic("buddy_init_memmap: only one memory region is supported");
++    }
++    for (struct Page *p = base; p != base + n; p ++) {
++        assert(PageReserved(p));
++        p->flags = p->property = 0;
++        set_page_ref(p, 0);
++    }
++    region_base = base;
++    region_pages = n;
++
++    // 每次选取当前位置可容纳且相对下标对齐的最大块，保留所有尾页。
++    size_t idx = 0;
++    while (idx < n) {
++        unsigned int order = MAX_ORDER;
++        while (((size_t)1 << order) > n - idx ||
++               (idx & (((size_t)1 << order) - 1)) != 0) {
++            order --;
++        }
++        buddy_insert(base + idx, order);
++        idx += (size_t)1 << order;
++    }
++    nr_free = n;
++}
++
++static struct Page *
++buddy_alloc_pages(size_t n) {
++    assert(n > 0);
++    if (n > nr_free) {
++        return NULL;
++    }
++    unsigned int order = buddy_order(n);
++    if (order > MAX_ORDER) {
++        return NULL;
++    }
++    unsigned int found = order;
++    while (found <= MAX_ORDER && list_empty(&free_areas[found].free_list)) {
++        found ++;
++    }
++    if (found > MAX_ORDER) {
++        return NULL;
++    }
++
++    struct Page *base = le2page(list_next(&free_areas[found].free_list), page_link);
++    buddy_remove(base, found);
++    while (found > order) {
++        found --;
++        buddy_insert(base + ((size_t)1 << found), found);
++    }
++    base->property = order;
++    // 向上取整多出的页面属于内部碎片，调用者释放时须随整块一起归还。
++    nr_free -= (size_t)1 << order;
++    return base;
++}
++
++static void
++buddy_free_pages(struct Page *base, size_t n) {
++    assert(n > 0);
++    unsigned int order = buddy_order(n);
++    assert(order <= MAX_ORDER);
++    assert(region_base != NULL);
++    assert(base >= region_base && base < region_base + region_pages);
++    assert(!PageProperty(base) && base->property == order);
++    size_t idx = base - region_base;
++    size_t released = (size_t)1 << order;
++    assert((idx & (released - 1)) == 0);
++    assert(released <= region_pages - idx);
++    for (struct Page *p = base; p != base + released; p ++) {
++        assert(!PageReserved(p) && !PageProperty(p));
++        p->flags = p->property = 0;
++        set_page_ref(p, 0);
++    }
++
++    while (order < MAX_ORDER) {
++        size_t size = (size_t)1 << order;
++        size_t buddy_idx = idx ^ size;
++        if (buddy_idx >= region_pages || size > region_pages - buddy_idx) {
++            break;
++        }
++        struct Page *buddy = region_base + buddy_idx;
++        if (!PageProperty(buddy) || buddy->property != order) {
++            break;
++        }
++        buddy_remove(buddy, order);
++        if (buddy_idx < idx) {
++            idx = buddy_idx;
++        }
++        order ++;
++    }
++    buddy_insert(region_base + idx, order);
++    nr_free += released;
++}
++
++static size_t
++buddy_nr_free_pages(void) {
++    return nr_free;
++}
++
++const struct pmm_manager buddy_pmm_manager = {
++    .name = "buddy_pmm_manager",
++    .init = buddy_init,
++    .init_memmap = buddy_init_memmap,
++    .alloc_pages = buddy_alloc_pages,
++    .free_pages = buddy_free_pages,
++    .nr_free_pages = buddy_nr_free_pages,
++    .check = buddy_check,
++};
++
++void
++buddy_check(void) {
++    assert(buddy_pmm_manager.nr_free_pages() > 0);
++    cprintf("buddy_check: placeholder\n");
++}

@@ -304,3 +304,119 @@ TODO
 ### 测试提示词
 
 TODO
+
+
+<a id="task05"></a>
+
+## Task 05：分支任务源码分析与调试方案
+
+发送对象：Codex，Analysis Agent；对应 [task_05.md](ai_logs/lab2/task_05.md)，具体发送时分未记录。
+
+````markdown
+## PROMPT
+
+你是 OS Lab2 分支任务的 Analysis Agent。目标：为“用 gdb 调试正在运行 ucore 的 QEMU，观察一次访存的虚拟地址如何被翻译成物理地址”准备**源码分析和可直接执行的调试方案**。你不能运行 Docker / QEMU / gdb，只做静态源码阅读；Leader 会按你的方案在容器里实际调试，并把真实输出反馈给你。
+
+任务：
+1. 阅读 QEMU 4.1.1 源码副本 `/Users/wesley/大三上课程/操作系统/tmp/qemu-src/`（从容器 `/opt/qemu-src/qemu-4.1.1` 原样拷出，含 `target/riscv`、`accel/tcg`、`include/exec`、`exec.c`、`memory.c`），给出 RISC-V 64 位客户机一次**数据 load**（例如 `ld`）从 TCG 生成的 helper 到得到物理地址、再到访问客户机内存的**完整调用路径**（函数名 + 文件:行号），以及路径上的关键分支（TLB 命中/未命中、victim TLB、`tlb_fill` 失败抛异常、MMU 模式判断、页表项有效性/权限/叶子判断、大页、A/D 位处理等）。
+2. 详细解释 `target/riscv/cpu_helper.c` 中 `get_physical_address` 的 SV39 页表遍历：每一级如何从 VA 取索引、如何算 PTE 地址、如何读 PTE（读用的是哪个函数，读的是客户机物理地址）、什么条件下继续下一级、什么条件下是叶子、最后如何拼出物理地址。
+3. 找出模拟 CPU 查 TLB 的 C 代码（`accel/tcg/cputlb.c` 中 `load_helper` / `tlb_hit` / `victim_tlb_hit` / `tlb_set_page_with_attrs` 等，以实际源码为准），说明 TLB 的组织（`CPUTLBEntry` 里存了什么、按什么索引、`mmu_idx` 的作用、`addend` 是什么）。
+4. 分析 QEMU 软件 TLB 与真实 CPU TLB 的**逻辑区别**，并说明“未开启分页（satp 为 Bare 或 M 模式）时的访存”在 QEMU 里是否也走 TLB / `tlb_fill` / `get_physical_address`，哪个分支直接返回。结论必须有源码行号支撑；拿不准的写“待调试确认”。
+5. 设计调试方案，Leader 将在容器里执行：
+   - 终端 1：`./os2026.sh debug`（QEMU 带 `-s -S` 启动，等待 gdb）；终端 2：`./os2026.sh gdb-qemu`（gdb 附加到 QEMU 进程，已设 `handle SIGPIPE nostop noprint` 和 `set remotetimeout unlimited`）；终端 3：`./os2026.sh gdb`（riscv gdb 连 ucore）。Leader 也可能用 gdb 的批处理模式（`gdb -batch -x <script>`）自动化，所以请把终端 2 和终端 3 的命令各写成一个可直接 `source` 的 gdb 脚本。
+   - 选定观察目标：(a) 一条**开启分页之后**的内核访存，建议用 ucore 中一定会被访问的地址（例如某个全局变量，或 `kern_init` 入口取指），给出如何用 `riscv64-unknown-elf-objdump`/`nm` 找到它的虚拟地址；(b) 一条**开启分页之前**（`entry.S` 里写 satp 之前，或 OpenSBI 阶段）的访存，用于第 4 问对比。
+   - 条件断点：在 `get_physical_address`、`riscv_cpu_tlb_fill`、`load_helper`（或其被内联后的实际可下断点符号）上设置以地址为条件的断点；注意排除 gdb 读内存触发的调试访问（调用栈里有 `cpu_memory_rw_debug` 的那次），给出排除方法。
+   - 每个断点命中后要打印的变量（例如 `addr`、`mode`、`base`、`levels`、`ptesize`、`idx`、`pte_addr`、`pte`、`ppn`、`*physical`、`tlb_entry->addr_read`、`addend`），以及 `bt` 的预期样子。
+6. 列出你认为答辩时最值得演示的“主线”：从哪个断点开始、单步几次、看哪几个变量，能在 3 分钟内讲清一次翻译。
+
+操作要求：
+- 只读源码，**只允许新建**以下两个文件，不修改任何其它文件，不 git commit / push：
+  - `<lab2 日志目录>/evidence/t5_qemu_analysis.md`：第 1～4、6 项的分析（中文，引用源码时给 `文件:行号` 和短代码片段）；
+  - `<lab2 日志目录>/evidence/t5_gdb_qemu.gdb` 与 `t5_gdb_ucore.gdb`：第 5 项的两个 gdb 脚本，脚本里每条命令后用 `#` 注释说明用途。
+- 不确定的地方明确标“待调试确认”，不要把推测写成事实。
+- 完成后回复 ≤15 行：调用路径一行版、TLB 查找函数位置、两个观察目标地址的获取方法、你最不确定的 3 点。
+
+## RELY
+
+- QEMU 版本 4.1.1，以 `--enable-debug` 编译，`-machine virt`，OpenSBI v0.4（启动输出）。容器内源码 `/opt/qemu-src/qemu-4.1.1`，本地只读副本 `/Users/wesley/大三上课程/操作系统/tmp/qemu-src/`。
+- Leader 已在 2026-10-24 验证：gdb 能在 `get_physical_address`（`target/riscv/cpu_helper.c:158`）和 `riscv_cpu_tlb_fill`（同文件 `:438`）下断点命中；gdb 读客户机内存时也会走 `get_physical_address`，调用栈中有 `cpu_memory_rw_debug`。
+- ucore 侧（`code/`，已编译通过）：`kern/init/entry.S` 在 `kern_entry` 里构造 `satp`（Sv39，`boot_page_table_sv39`）后 `csrw satp`、`sfence.vma`，再跳到高地址的 `kern_init`；本次运行 `kern_init` 等符号在 `0xffffffffc02000xx` 一带（以 `nm bin/kernel` 为准）；`pmm_init` 打印 `satp physical address: 0x0000000080205000`。启动页表把 `0xffffffffc0000000` 起 1GB 映射到物理 `0x80000000`（1GB 大页）。
+- 指导书：`/Users/wesley/大三上课程/操作系统/实验指导书/lab2/lab2_4_qemu_mmu_debug.md`（6 个调试要求）。
+- 入口脚本：`/Users/wesley/大三上课程/操作系统/os2026.sh`（`debug` / `gdb-qemu` / `gdb` 子命令，读它确认实际命令）。
+
+## GUARANTEE
+
+- 两个 gdb 脚本只包含 gdb 命令和注释，Leader 可直接 `source`。
+- 分析中的每个结论都附源码 `文件:行号`；推测标“待调试确认”。
+- 不修改任何已有文件。
+
+## SPECIFICATION
+
+- Preconditions：P0（page_init、Best-Fit）已完成并编译通过；QEMU 源码副本存在。
+- Postconditions：上述 3 个文件存在、非空；回复包含 6 项要求的摘要。
+- Edge cases：
+  - 若某函数在 `--enable-debug`（-O0）下仍被宏展开或内联、无法直接下断点，给出可替代的断点位置（文件:行号）。
+  - 若 4.1.1 中 TLB 查找代码与上面列的函数名不同，以实际源码为准并说明。
+  - 1GB 大页（Sv39 第一级就是叶子）会让页表遍历只走一级，请说明这对观察有什么影响，并建议是否另找一个经过多级页表的地址（若 ucore 本实验中不存在多级映射，如实说明）。
+
+````
+
+<a id="task07"></a>
+
+## Task 07：Leader 实际调试
+
+Task 07 由 Leader（Claude Code）自己执行，没有发给子 Agent 的提示词；仅记录实际做法与证据，见 [task_07.md](ai_logs/lab2/task_07.md)。
+
+<a id="task08"></a>
+
+## Task 08：分支任务报告与演示稿
+
+发送对象：Codex，Report Agent；对应 [task_08.md](ai_logs/lab2/task_08.md)，具体发送时分未记录。
+
+````markdown
+## PROMPT
+
+你是 OS Lab2 的 Report Agent。仓库 `/Users/wesley/大三上课程/操作系统/os2026-labs`，分支 `lab2`。用户是初学者，答辩时要现场演示并回答助教问题，而且不能借助大模型作答。
+
+任务：
+1. 在 `report/report.md` 的“分支任务：gdb 调试页表查询过程”一节，替换全部 TODO，写完：
+   - “调试环境”：三个终端各做什么、启动顺序（`./os2026.sh debug` → `./os2026.sh gdb-qemu` 设断点后 `continue` → `./os2026.sh gdb`）；调试版 QEMU 从哪来（镜像 `os2026-dbg` 内 `--enable-debug` 编译的 QEMU 4.1.1，源码在容器 `/opt/qemu-src/qemu-4.1.1`，因此不需要指导书里“重新编译、改 Makefile 的 QEMU 路径、sudo gdb”这几步）；报告里的数据是 Leader 用批处理脚本（`ai_logs/lab2/evidence/t7_scripts/`）在同一个容器里自动跑三终端得到的，交互式命令与脚本相同。
+   - 第 1～6 问逐一回答。事实只能来自 `ai_logs/lab2/task_05.md`、`task_07.md`、`evidence/t5_qemu_analysis.md`、`evidence/t7_*.txt`、`evidence/t7_leader_notes.md` 和你实际读到的源码（`/Users/wesley/大三上课程/操作系统/tmp/qemu-src/`）。每个关键结论给出 `文件:行号` 和对应的实测输出（短引用，代码块）。要求：
+     - 第 1 问：给出一行版调用路径 + 每一环的作用 + 关键分支（TLB 命中/未命中/victim、Bare/M 直接返回、V 位、叶子判断、权限、A/D），并用 Task 07 第一轮 [A]～[F] 演示 VA `0xffffffffc0207008` → PA `0x80207008` → 宿主指针的全过程。
+     - 第 2 问：单步讲解 Sv39 遍历，用实测数值算一遍（`satp` → 根页表 `0x80205000` → `idx=511` → `pte_addr=0x80205ff8` → `pte=0x200000cf` → 叶子 → `ppn` → 拼接）；说明本实验启动页表是 1GB 大页，所以只走一层，若是 4KB 页会走三层（按源码说明循环如何继续，不要编造三层的实测数据）。
+     - 第 3 问：C 语言 TLB 查找在 `load_helper`/`store_helper`（`cputlb.c:1271`、`:1519`）、`tlb_hit`、`victim_tlb_hit`；`CPUTLBEntry` 存什么、怎么索引、`mmu_idx`、`addend`；用实测 [H]（`addr_write=0xffffffffffffffff` 空表项 → 未命中 → victim → fill）和 [G]（同页后续访问在生成代码快速路径命中、不进 C helper）说明。
+     - 第 4 问：逻辑区别至少包括——QEMU 软件 TLB 缓存的是“客户机虚拟页 → 宿主内存指针（addend）”，真实 TLB 缓存“虚拟页 → 物理页 + 权限”；QEMU 在 Bare 模式下也把访存装进软件 TLB（实测 [I][J]：`case VM_1_10_MBARE` 直接 `*physical = addr`，仍 `tlb_set_page`），真实 CPU 在 Bare 模式下不做地址翻译；QEMU 的 TLB 按 `mmu_idx`（特权级）分组、大小和替换策略是软件选择；以及 [K] 写 satp 后旧表项仍然命中（`csr.c:746` 只在 ASID 变化时 flush）。真实 CPU 的部分只写规范/教材层面的说法，并标明未实测。
+     - 第 5 问：有趣细节，至少写：写 satp 之后低地址取指为什么没有缺页（[K] + `t7_leader_notes.md` 第 2 节，QEMU 8.2.2 部分标“推测，未核对源码”）；`-d in_asm` 日志里 0x80200038 那个 TB 被反汇编成一串 `sw a2,96(s0)`（原因待确认，如实写）；1GB 大页在软件 TLB 里只装 4KB；`get_physical_address` 返回页基址不含页内偏移；gdb 读内存也会触发 `get_physical_address`（`cpu_memory_rw_debug`），所以断点要加条件。
+     - 第 6 问：只记录真实发生的大模型交互：Leader（Claude Code）把源码分析任务交给 Codex（Task 05 原文在 `prompt.md`）、Codex 给出的哪些预测被实测证实；satp 疑问的情景、思路（先看 `-d in_asm` 的 TB 边界，再读 `write_satp`，再用 gdb 在 `get_page_addr_code` 验证）；子 Agent 无法访问 Docker 后的分工调整。不要编造用户本人与大模型的对话。
+   - 同时修订两处（Leader 审读意见，见 `task_06.md` Verification）：① “二、实验环境”里“工具与环境信息依据 Task 06”这句改为引用启动输出（`evidence/t3_qemu.txt`）和 `/Users/wesley/大三上课程/操作系统/环境配置状态.md`；② 该节对 QEMU 8.2.2 的说明后面补一句指向分支任务第 5 问的解释（4.1.1 能跑是因为旧 TLB 表项，8.2.2 的部分仍为推测）。
+   - “五、测试与验证”里“Buddy、SLUB 与分支任务”小节：分支任务部分写明用到的脚本和 evidence 文件；Buddy、SLUB 保留 TODO。
+2. 新建 `report/ai_logs/lab2/分支任务演示步骤.md`：给用户自己答辩用的 3 分钟演示稿。内容：三个终端逐条要敲的命令（交互式，不是批处理）；在终端 2 设的条件断点（排除 `cpu_memory_rw_debug` 的办法）；每停一次要 `print` 什么、看到什么数值、该怎么讲一句话；可能遇到的问题（`Ignoring packet error` → `set remotetimeout unlimited`、容器名冲突 `docker rm -f os`、断点不命中时怎么办）；最后列 8～10 个助教可能问的问题和简短答案要点（只用本报告里有依据的内容）。
+3. `report/prompt.md`：在末尾追加 Task 05、Task 07（说明 Task 07 是 Leader 自己执行、没有发给子 Agent 的提示词，只附一行说明，不要编造提示词）和 Task 08 的四段式提示词原文（从 `task_05.md`、`task_08.md` 的 `## PROMPT` 到 `## SPECIFICATION` 末尾逐字复制），格式与前面小节一致。
+
+操作要求：
+- 只修改 `report/report.md`、`report/prompt.md`，新建 `report/ai_logs/lab2/分支任务演示步骤.md`；不改代码、不改其它日志文件，不 git commit / push。
+- 不运行 Docker / QEMU / gdb（你的沙箱也用不了）。
+- 中文、短句、术语第一次出现时一句话解释；推测必须标“推测”或“待确认”。
+- 完成后回复 ≤10 行。
+
+## RELY
+
+- 实测证据：`evidence/t7_paged_qemu_gdb.txt`（第一轮 [A]～[G]）、`evidence/t7_bare_qemu_gdb.txt`（第二轮 [H]～[K]）、`evidence/t7_tracer_qemu_gdb.txt`、`evidence/t7_inasm_kern_entry.txt`、`evidence/t7_leader_notes.md`、`task_07.md`。
+- 源码分析：`evidence/t5_qemu_analysis.md`；源码副本 `/Users/wesley/大三上课程/操作系统/tmp/qemu-src/`。
+- 指导书：`/Users/wesley/大三上课程/操作系统/实验指导书/lab2/lab2_4_qemu_mmu_debug.md`。
+- 助教 2026-10-23 01:33 通知：答辩时只需简单演示讲解关键部分，更多调试细节放在报告中；遇到 `Ignoring packet error` 用 `set remotetimeout unlimited`。
+- 入口脚本：`/Users/wesley/大三上课程/操作系统/os2026.sh`。
+
+## GUARANTEE
+
+- 分支任务一节 6 问全部回答，没有 TODO；每个实测数值都能在 evidence 里找到。
+- 演示步骤文件可照着逐条执行。
+- `prompt.md` 新增内容与 `task_05.md`、`task_08.md` 逐字一致。
+
+## SPECIFICATION
+
+- Preconditions：Task 05、07 已完成，evidence 齐全；`report.md` 已有 P0 部分（Task 06）。
+- Postconditions：`git diff --stat` 只显示 `report/report.md`、`report/prompt.md` 和新文件。
+- Edge cases：evidence 与分析文件说法冲突时以 evidence 为准并在回复中指出；没有依据的内容写“待确认”，不要补全。
+
+````

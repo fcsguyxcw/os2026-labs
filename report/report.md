@@ -31,11 +31,11 @@
 | Leader | Claude Code | Claude Opus 5.5 | 任务拆分、整合与 Docker 验证 |
 | 子 Agent | Codex CLI | GPT-6.1-Sol medium | Herdr 面板 w1:p2、w1:p3；实现、审查与修复 |
 
-软件环境：macOS 上的 OrbStack Docker，实际使用镜像 `os2026-dbg`。镜像内使用 RISC-V GCC 13.2.0、QEMU 4.1.1 和 gdb-multiarch。QEMU 4.1.1 以 `--enable-debug` 编译，同一个可执行文件既用于运行内核，也用于分支任务调试。仓库分支为 `lab2`，代码位于 `code/`。工具与环境信息依据 [Task 06](ai_logs/lab2/task_06.md)；[Task 05](ai_logs/lab2/task_05.md) 也记录了调试版 QEMU 4.1.1。这里不沿用模板中未经此次日志确认的 Ubuntu 和 gdb 具体版本。
+软件环境：macOS 上的 OrbStack Docker，实际使用镜像 `os2026-dbg`。镜像内使用 RISC-V GCC 13.2.0、QEMU 4.1.1 和 gdb-multiarch。QEMU 4.1.1 以 `--enable-debug` 编译，同一个可执行文件既用于运行内核，也用于分支任务调试。仓库分支为 `lab2`，代码位于 `code/`。工具与环境信息依据 [启动输出 t3_qemu.txt](ai_logs/lab2/evidence/t3_qemu.txt) 和 [环境配置状态.md](../../环境配置状态.md) 的 Mac 环境记录；启动输出确认 OpenSBI 与内核运行情况，工具版本和调试版构建位置由环境配置记录提供。这里不沿用模板中未经此次日志确认的 Ubuntu 和 gdb 具体版本。
 
 固件是内核启动前运行的底层软件。实际启动输出为 `OpenSBI v0.4 (Jul  2 2019 11:53:53)`，另有 `Runtime SBI Version : 0.1`；前者是固件版本，后者是其运行时接口版本，二者不能混为一谈。原始输出见 [t3_qemu.txt](ai_logs/lab2/evidence/t3_qemu.txt)。
 
-**环境调研结论**（来自 Task 06 的环境说明，不作为本仓库对 QEMU 8.2.2 的复现实测结果）：`entry.S` 的启动页表没有低地址恒等映射，即没有把启动时的低地址映射回同一物理地址。调研指出，QEMU 8.2.2 下执行 `csrw satp` 开启地址转换后，下一次取指会缺页，因此内核没有输出；QEMU 4.1.1 可正常运行。本实验据此使用 4.1.1。源码可以确认启动页表前 511 项为零、只有最后一项映射高地址；仓库运行证据证明的是 4.1.1 下的正常路径。
+**环境调研结论**（来源为上述环境配置记录）：`entry.S` 的启动页表前 511 项为零，仅最后一项映射高地址，没有低地址恒等映射，即没有把低虚拟地址映射回同一物理地址。环境记录报告 QEMU 8.2.2 下在开启分页后的 `0x80200038` 发生 `exec_page_fault`；本报告没有重新复现。QEMU 4.1.1 的正常运行有 [t3_qemu.txt](ai_logs/lab2/evidence/t3_qemu.txt) 支持。分支任务第 5 问进一步结合 Task 07 实测说明：4.1.1 此时仍命中分页前留下的软件 TLB 表项；“8.2.2 因更积极刷新而失败”仍是**推测，未核对源码**。
 
 ---
 
@@ -127,14 +127,140 @@ TODO：实现提示词与测试提示词（原文见 `prompt.md`）；测试覆�
 
 ### 分支任务：gdb 调试页表查询过程
 
-调试环境：TODO（三个终端的分工与启动顺序，调试版 QEMU 的获取方式）
+#### 调试环境
 
-1. 关键调用路径：访存指令的虚拟地址在 QEMU 中如何被翻译成物理地址（含关键分支语句）。TODO
-2. 单步调试页表翻译部分，关键操作流程。TODO
-3. QEMU 源码中模拟 CPU 查找 TLB 的 C 代码及细节。TODO
-4. QEMU 模拟的 TLB 与真实 CPU 的 TLB 在逻辑上的区别（对比未开启与开启虚拟地址空间时的访存路径）。TODO
-5. 调试过程中有趣的细节，以及观察模拟器用软件模拟硬件时了解到的知识。TODO
-6. 通过大模型解决的问题：当时情景、思路、交互过程。TODO
+客户机是运行中的 ucore；宿主是运行 QEMU 的容器。TCG 是 QEMU 把客户机指令转换为宿主代码的翻译器。TB（翻译块）是一段已翻译的客户机指令对应的宿主代码。TLB 是缓存地址映射和权限的快表；PTE 是页表项。load/store 分别表示读/写内存，fill 表示补入缓存，tag 是用于匹配地址的标记。
+
+三个终端分别控制 QEMU 启动、QEMU 源码调试、ucore 调试。宿主课程目录下先运行 `./os2026.sh debug`，QEMU 用 `-s -S` 等待连接；再运行 `./os2026.sh gdb-qemu`，附加 QEMU 进程、设断点并 `continue`；最后运行 `./os2026.sh gdb`，通过 `localhost:1234` 控制 ucore。这两个 gdb 调试的对象不同，源码单步在终端 2，客户机寄存器与指令在终端 3。入口依据 `../os2026.sh:21-28`，remote 命令依据 `code/Makefile:179-182`。QEMU 宿主停住时，终端 3 暂时等待，应先操作终端 2。
+
+使用镜像 `os2026-dbg` 中已用 `--enable-debug` 编译的 QEMU 4.1.1，源码在容器 `/opt/qemu-src/qemu-4.1.1`。本环境不需要再做指导书中的重新编译、改 Makefile 的 QEMU 路径和 `sudo gdb`；入口脚本已给容器 `SYS_PTRACE` 能力（`os2026.sh:13`）。这些环境说明见 [Task 07](ai_logs/lab2/task_07.md) 和环境配置记录。
+
+以下实测数据由 Leader 在同一容器中运行 [t7_scripts/](ai_logs/lab2/evidence/t7_scripts/) 的批处理脚本取得。`run.sh` 自动启动 QEMU、host gdb 和 RISC-V gdb；交互式演示使用相同断点、单步与打印命令。首次链路见 [t7_tracer_qemu_gdb.txt](ai_logs/lab2/evidence/t7_tracer_qemu_gdb.txt)，完整两轮见 [paged 日志](ai_logs/lab2/evidence/t7_paged_qemu_gdb.txt)、[Bare 日志](ai_logs/lab2/evidence/t7_bare_qemu_gdb.txt)。本报告整理时没有重新运行调试。可照做的交互稿见 [分支任务演示步骤.md](ai_logs/lab2/分支任务演示步骤.md)。下文 QEMU 源码行号均相对 `/opt/qemu-src/qemu-4.1.1`，已与本地只读副本核对。ucore 的 `pmm.c` 行号按 Task 07 取证时版本引用；后续 Buddy/SLUB 扩展可能使行号移动，可按 `SetPageReserved` 等语句定位。
+
+#### 第 1 问：关键调用路径和分支
+
+本次数据读取的慢路径一行版：`code_gen_buffer → helper_le_ldq_mmu → load_helper → tlb_fill → riscv_cpu_tlb_fill → get_physical_address → tlb_set_page_with_attrs → 返回 load_helper → ldq_le_p(haddr)`。前半段是调用栈；装表、返回和读取是随后发生的步骤，并非所有函数同一时刻嵌套。
+
+`helper_le_ldq_mmu` 接收一次小端 8 字节读取（`accel/tcg/cputlb.c:1446-1450`）。`load_helper` 检查软件 TLB；主表未命中则查 victim TLB，即保存被主表挤出项的小表；两者都未命中才 fill（`:1271-1278`）。`tlb_fill` 分发到 CPU 的架构回调（`:868-879`），RISC-V 回调计算物理地址并检查物理内存保护 PMP（`target/riscv/cpu_helper.c:451-467`）。成功后装表（`:471-474`），返回 helper 用 `addr+addend` 得到宿主指针并读取 RAM（`cputlb.c:1338,1361`）。装表时通过物理地址空间找到承载该页的内存区域，取得宿主 RAM 指针（`cputlb.c:725-748,804`；`exec.c:722-770`）。`addend` 是宿主地址偏移，不是客户机 PA 减 VA。
+
+第一轮 [A]～[F] 的短引用如下，省略标签解释和非关键行，各行来自同一轮日志：
+
+```text
+[A] addr=0xffffffffc0207008 satp=0x8000000000080205 priv=1
+[B] base(根页表物理地址)=0x80205000 idx=511 pte_addr=0x80205ff8 pte=0x200000cf
+[C] *physical(4KB 物理页基址)=0x80207000  完整物理地址=0x80207008
+[D] Value returned is $1 = 0
+[E] vaddr=0xffffffffc0207000 paddr=0x80207000 prot=7 mmu_idx=1 size=0x1000
+[F] addr_read(tag)=0xffffffffc0207000 addend=0xffffafe00000
+haddr=0xffff70007008  *(uint64_t*)haddr=0x0
+```
+
+这里读的是描述符数组第一个元素的 flags，即 `pages[0].flags`。`code/kern/mm/pmm.c:97-98` 调用 `SetPageReserved`，宏以读后改写的方式置位（`code/kern/mm/memlayout.h:45`）。Task 07 选取的是第一次读，`access_type=0`、`size=8`，不是取指。数组起点是 `0xffffffffc0207000`；不要把它和保存数组指针的全局变量 `pages` 自身地址混淆。
+
+最后的加法按64位地址回绕：`0xffffffffc0207008 + 0xffffafe00000 = 0xffff70007008`。前者是客户机 VA，中间算出的 `0x80207008` 是客户机 PA，后者才是 QEMU 进程中的宿主指针。宿主指针和 addend 会随运行变化，不能当作固定地址背诵。[D] 日志同时显示 `ret=1`，但当时停在 `cpu_helper.c:451` 的赋值前；函数返回值已经是0，应以返回值为准，再单步后看 ret。
+
+关键分支还包括以下几类。这些分支位置来自源码；除本次正常路径和第二轮 Bare 路径外，没有相应异常的动态样本，不能说都已实测覆盖。
+
+- 有效 M 模式或无 MMU 功能直接返回原地址；MPRV 可先改变数据访问的有效模式。Bare 也直接返回原地址（`cpu_helper.c:163-174,196-199`）。
+- Sv39 先检查虚拟地址高位符号扩展（`:223-229`）。V=0 失败；R/W/X 全0继续下级；W=1而R=0的保留组合失败（`:256-267`）。叶子还要检查 U/S 权限、SUM/MXR、访问类型和大页对齐（`:268-288`）。
+- A 表示页被访问，D 表示页被写脏。需要时置 A，store 还置 D；RAM 内用原子比较交换更新，冲突重新尝试，不能更新则失败（`:291-327`）。本次 A/D 已为1，没有观察到更新。
+- 普通 fill 失败时设置异常并退出当前 CPU 执行循环；probe 探测模式失败只返回 false（`:475-479`；`target/riscv/op_helper.c:28-34`）。TLB 命中会绕过遍历；victim 命中交换缓存项（`cputlb.c:994-1007`）。跨页、未对齐与设备内存另有分支（`:1264-1268,1282-1334`），本次选择的是普通对齐 RAM load。
+
+#### 第 2 问：用实测数值单步解释 Sv39
+
+Sv39 使用39位虚拟地址，并以三个9位索引查页表。这里按源码的循环编号解释：i=0 是根层，对应通常所说的 L2；不能把 i=0 误认为4KB叶子所在的最底层。
+
+1. [A] 的 `satp=0x8000000000080205`：MODE=8 为 Sv39，根物理页号 PPN=`0x80205`，左移12位得到根表物理地址 `0x80205000`。源码为 `cpu_helper.c:184-191`，设置 `levels=3, ptidxbits=9, ptesize=8`。
+2. 初始 `ptshift=18`。对 VA `0xffffffffc0207008`，`idx=(VA>>(12+18))&0x1ff=511`。PTE 物理地址是 `base+idx*8=0x80205000+0xff8=0x80205ff8`（`:231-242`）。
+3. RV64 用 `ldq_phys(cs->as,pte_addr)` 读取8字节 PTE（`:252`）。它读的是客户机物理内存，不是拿 pte_addr 再查一次客户机虚拟页表；包装函数见 `include/exec/memory_ldst_phys.inc.h:29-32`。本地副本缺少其最终实例化的 `memory_ldst.inc.c`，内部实现不作进一步无依据展开。
+4. [B] 的 `pte=0x200000cf`，右移10位得 `ppn=0x80000`；V/R/W/X/A/D=1，U=0。R/X 已置位，属于叶子，且 ppn 低18位为0，满足1GB映射对齐（`:254-278`）。权限检查允许本次 S 态 load。
+5. [C] 中 `vpn=VA>>12=0xffffffffc0207`。源码 `:333-334` 的计算为 `((0x80000 | (vpn & 0x3ffff)) << 12)`；低18位 VPN=`0x207`，于是物理页基址=`0x80207000`。加页内偏移 `VA&0xfff=8`，完整 PA=`0x80207008`。
+
+对应的遍历现场：
+
+```text
+levels=3 ptidxbits=9 ptesize=8 i=0 ptshift=18
+base(根页表物理地址)=0x80205000 idx=511 pte_addr=0x80205ff8 pte=0x200000cf
+ppn=0x80000  V=1 R=1 W=1 X=1 U=0 A=1 D=1
+```
+
+本实验启动页表只有最后一个根项有映射（`code/kern/init/entry.S:59-63`），该项是1GB大页，根层已经是叶子，因此实测只读了一层。如果采用4KB页，前两层应是 R/W/X 全0的有效非叶子项，源码 `cpu_helper.c:259-261` 把 `base` 改成下一层表物理地址，循环 `:237` 把 ptshift 从18减到9、再到0，第三层才得到4KB叶子。这个三层过程是源码解释，没有三层实测数据。
+
+#### 第 3 问：TLB 的 C 实现、组织与查找
+
+C 查找入口分别是 `load_helper` 的 `accel/tcg/cputlb.c:1271` 和 `store_helper` 的 `:1519`。`tlb_hit` 定义在 `include/exec/cpu-all.h:359-361`，实际比较页地址并保留 invalid 位（`:348-350`）。`victim_tlb_hit` 在 `cputlb.c:977-1010`。两个 helper 都强制内联（`:1247,1500`），所以源码行断点可能展开成多个位置，日志里 load 行有14个位置、store行有7个位置；需加地址条件。
+
+`CPUTLBEntry` 存读、写、取指三种 tag：`addr_read/addr_write/addr_code`，再存 `addend`（`include/exec/cpu-defs.h:110-129`）。tag 是虚拟页标记及低位状态；没有相应访问权限时可设为全1（`cputlb.c:805-817`），不能把它解释为客户机物理页号。`mmu_idx` 选择缓存组，RISC-V 这里返回 `env->priv`，本次为1，即 S 态（`cpu_helper.c:27-33`）；它不是 satp MODE，也不是地址空间标识 ASID。主表索引为 `(addr>>12)&(mask>>CPU_TLB_ENTRY_BITS)`（`include/exec/cpu_ldst.h:163-180`）。表大小可动态变化；victim 每组8项，全相联扫描；冲突淘汰使用轮转位置（`cpu-defs.h:83-107,170-188`；`cputlb.c:777-786`）。
+
+第二轮 [H] 实测的是分页前的 **store**，不可当作 load 的输出：
+
+```text
+addr=0x80206000 mmu_idx=1 index=6 tlb_addr(addr_write)=0xffffffffffffffff 页=0x80206000 -> 未命中
+satp=0x0 priv=1
+1520        if (!victim_tlb_hit(env, mmu_idx, index, tlb_off,
+```
+
+下一行检查 victim；随后 [I] 进入 `get_physical_address`，说明本次 victim 也未命中，最终走 fill。日志没有展示 victim 命中的交换现场，交换行为仅由源码说明。
+
+[G] 则是缓存命中的对比。[F] 后设定的同页 `cputlb.c:1271` 和 `get_physical_address` 断点没有再命中，日志以 detach 结束，**没有一段现场打印“TLB 命中”的 [G] 输出**。Task 07 据此结合生成代码的快速表结构（`cpu-defs.h:133-136,179-188`）解释：后续同页访问直接在生成的宿主代码中命中快表，没有进入 C helper；不能把“C 断点没停”误认为没有访存。该结论依据为 Task 07 记录与源码，未记录快路径逐条宿主汇编单步。
+
+#### 第 4 问：软件 TLB 与真实 CPU 的逻辑区别
+
+教材/规范层面，真实 CPU 的地址翻译 TLB 缓存“虚拟页到物理页及权限”，Bare 模式不执行分页地址翻译。这里没有对真实 CPU 的微架构做实测，也不推断其内部一定不存在任何其他缓存。
+
+QEMU 软件 TLB 则为模拟器执行服务：RAM 快路径用虚拟页 tag 和 addend 直接得到宿主内存指针，同时保留访问类型及设备内存分发信息（`cpu-defs.h:110-150`；`cputlb.c:804,1338`）。即使客户机不做分页，它仍需把客户机物理内存定位到宿主内存，所以 Bare 也可以 miss、fill、装表。不是说每次 Bare 访问都查页表。
+
+第二轮 [I][J] 是直接证据：
+
+```text
+addr=0x80206000 access_type=1 mmu_idx=1 satp=0x0 priv_ver=0x11100
+mode=1 vm=0
+*physical=0x80206000（等于 addr，没有查页表）
+vaddr=0x80206000 paddr=0x80206000 prot=7 mmu_idx=1
+```
+
+实测停在 `case VM_1_10_MBARE`（`cpu_helper.c:196-199`），直接 `*physical=addr`，之后仍调用 `tlb_set_page`（`:471-473`）。有效 M 模式直接返回是另一源码分支（`:171-174`），本次 `priv=1` 不能写成 M 模式实测。
+
+QEMU 选择按 mmu_idx 分组、动态主表与8项 victim，这是软件实现策略，不是真实芯片的结构承诺。它还能保留 Bare 下装入的旧项。第二轮 [K]：
+
+```text
+addr=0x80200038 satp=0x8000000000080205
+$1 = 0x80200000
+$2 = 0x0
+```
+
+这里 `$1` 为 `entry->addr_code`，`$2` 为 index；新 satp 已生效，但取指页仍命中旧 tag。`get_page_addr_code` 在 `cputlb.c:1030` 比较 tag，未进入 get_physical_address。`target/riscv/csr.c:739-749` 在这一版本的新规范分支只在 ASID 改变时显式 flush；本次 MODE/PPN 变化、ASID 没变，旧项没有随之刷掉。不能从此推导所有版本或真实 CPU 都有同样行为。
+
+#### 第 5 问：调试中的细节
+
+**写 satp 后为何低地址还能取指。** 源码 `code/kern/init/entry.S:29-42` 在写 satp 后才执行 sfence 并跳到高地址。页表无低地址映射，但 [K] 证明 `0x80200038` 的取指在 QEMU 4.1.1 命中了旧 Bare 代码项。`t7_inasm_kern_entry.txt` 的 TB 边界摘录：
+
+```text
+0x0000000080200034:  18029073          csrrw           zero,satp,t0
+0x0000000080200038:  d030              sw              a2,96(s0)
+0x000000008020003a:  d030              sw              a2,96(s0)
+0xffffffffc02000d6:  00006517          auipc           a0,24576
+```
+
+该文件的 Trace 行还记录执行了从 `0x80200038` 开始的 TB，再进入高地址。结合 [K]、`csr.c:746-749` 和 [Leader notes 第2节](ai_logs/lab2/evidence/t7_leader_notes.md)，解释是：旧代码 TLB 项使第二个 TB 能被翻译；sfence 在执行时刷新 TLB（`target/riscv/insn_trans/trans_privileged.inc.c:90-95`、`op_helper.c:144-153`），但后续跳高地址指令已在同一 TB 内生成，不需逐条重新取指。第二轮 [K] 自身在第二次停点后 detach，并未跟踪到 kern_init；完整跳转证据来自独立的 in_asm/Trace 日志，不能混称同一轮。
+
+环境记录中 QEMU 8.2.2 的 `epc=0x80200038` 与此差异相符，但“8.2.2 在 satp 改变时总刷新，因而暴露缺页”是**推测，未核对源码**。不把它写成已验证实现。
+
+**反汇编显示与执行路径不同。** 第二个 TB 的日志把 `0x80200038` 起的指令显示为一串 `sw a2,96(s0)`，与 entry.S 应有的 sfence/跳转序列不符。原因**待确认**；Leader 推测是日志反汇编使用调试读接口，按新 satp 无法读到低地址，显示了不可靠字节。现有证据不足以证明这个原因，也不能说内核实际执行了一串相同 sw。
+
+**1GB 页表映射，软件 TLB 仍只装4KB。** [B] 的根层叶子和 [E] 的 `size=0x1000` 同时成立；`cpu_helper.c:472-473` 固定按 TARGET_PAGE_SIZE 装表。映射的页大小与软件缓存项粒度不是一回事。
+
+**返回的是页基址。** [C] 的 `*physical=0x80207000` 不含偏移8，真实数据地址为 `0x80207008`（`cpu_helper.c:333-334`）。Bare 分支直接返回原 addr，不能把两条返回路径混为一谈。
+
+**gdb 读内存也能走翻译。** `exec.c:3964-3990` 的 `cpu_memory_rw_debug` 调试读会调用架构 debug 翻译，后者也调 get_physical_address（`cpu_helper.c:382-389`）。因此先看 bt 是否经真实 `riscv_cpu_tlb_fill/load_helper`。Task 07 [A] 栈里是实际 load；为更稳妥排除调试读取，演示稿先在 fill 的451行按数据地址与 access_type 下断点，再 step 进入翻译函数，避免只凭地址认定是客户机执行。
+
+#### 第 6 问：真实的大模型协作过程
+
+Leader（Claude Code）把源码分析与调试方案交给 Codex，形成 [Task 05](ai_logs/lab2/task_05.md)，四段式提示词原文保存在 [prompt.md](prompt.md#task05)。Codex 只读源码，输出分析与两个 gdb 脚本。子 Agent 之前因 Docker socket 权限无法执行，后续明确由子 Agent 分析、Leader 容器实测。Task 07 是 Leader 自己完成的调试记录，没有发给子 Agent 的提示词；不能补写一段虚构对话。
+
+[Task 05 分析](ai_logs/lab2/evidence/t5_qemu_analysis.md) 预测的 helper→fill→页表路径被 [A] 证实；根层1GB叶子、physical 不含页内偏移、4KB软件项被 [B][C][E] 证实；Bare 仍装软件 TLB 被 [I][J] 证实。方案最初建议选择 npage 的读取并提到固件 load，Leader 实测改选自然 miss 的 `pages[0].flags` load 和入口的 `sd a0,0(t0)` store，报告采用实际目标，保留原方案不回写历史记录。
+
+另一个真实问题是“写 satp 后为什么没在低地址缺页”。Task 07 与 Leader notes 记录的思路是：先用 `-d in_asm,exec,nochain` 找 TB 边界；发现 csrw 在前一个 TB 末尾，排除“csrw 与后续全部在旧 TB”这一解释；再读 `write_satp`，发现只在 ASID 改变时 flush；最后用 gdb 在 `get_page_addr_code:1030` 看 `addr_code`，用 [K] 确认旧项命中。异常的 sw 反汇编和8.2.2行为没有充分证据，继续标待确认。这里记录的是 Agent 的任务交接、源码分析和 Leader 验证，没有编造用户与模型逐句对话。
 
 ---
 
@@ -179,7 +305,13 @@ Leader 尝试 `-m 2080K` 时，[t4_qemu_m2080K.txt](ai_logs/lab2/evidence/t4_qem
 
 ### Buddy、SLUB 与分支任务
 
-TODO：补各自的测试命令、覆盖范围和实际输出。
+Buddy：TODO，补测试命令、覆盖范围和实际输出。
+
+SLUB：TODO，补测试命令、覆盖范围和实际输出。
+
+分支任务已由 Leader 在同一容器以双 gdb 批处理验证，本次仅整理证据。脚本为 [run.sh](ai_logs/lab2/evidence/t7_scripts/run.sh)、[qemu_tracer.gdb](ai_logs/lab2/evidence/t7_scripts/qemu_tracer.gdb)、[ucore_tracer.gdb](ai_logs/lab2/evidence/t7_scripts/ucore_tracer.gdb)、[paged.gdb](ai_logs/lab2/evidence/t7_scripts/paged.gdb)、[bare.gdb](ai_logs/lab2/evidence/t7_scripts/bare.gdb)。`run.sh <QEMU侧脚本> <ucore侧脚本> <输出前缀>` 自动运行对应一轮；不是在报告整理阶段再次执行。
+
+原始输出为 [tracer](ai_logs/lab2/evidence/t7_tracer_qemu_gdb.txt)、[分页后 A～F](ai_logs/lab2/evidence/t7_paged_qemu_gdb.txt)、[Bare H～K](ai_logs/lab2/evidence/t7_bare_qemu_gdb.txt) 及 [TB 日志](ai_logs/lab2/evidence/t7_inasm_kern_entry.txt)，过程解释见 [Leader notes](ai_logs/lab2/evidence/t7_leader_notes.md)。已展示一次实际 load 的 VA→PA→宿主指针、根层大页、Bare store 的 miss/fill 和写 satp 后的旧代码项命中。[G] 未再停住，不存在“打印命中”的现场段；同页快路径的解释结合 Task 07 与源码。未验证真实 CPU、QEMU 8.2.2 刷新实现、victim 命中、A/D更新和三层4KB遍历。交互式三终端演示尚需用户按演示稿练习。
 
 ---
 
