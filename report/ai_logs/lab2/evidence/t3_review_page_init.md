@@ -1,0 +1,8 @@
+[MUST_FIX] code/kern/mm/pmm.c:91 — Case 3 的无完整空闲页检查发生在写入全部描述符之后，未先确认描述符数组本身落在设备树报告的 RAM 内；以现有运行日志的 end=0xffffffffc0206078 为例，若 base=0x80000000、size=0x208000（内核仍放得下），则 npage-nbase=520，RV64 下 sizeof(struct Page)=40，描述符占用物理区间 [0x80207000,0x8020c140)，超过报告末端 0x80208000，循环会访问范围外内存，不能保证走到后面的无空闲页原因输出；这是源码及布局推导，未运行此边界用例 — 依据：Task 01 SPECIFICATION Case 3 要求 freemem>=mem_end_aligned 时不调用 init_memmap 且明确输出原因；应在描述符写入之前检查其物理末端，空间不足时先报告并明确终止，若需成功返回则应先澄清与“所有描述符置 reserved”后置条件的冲突。
+[NOTE] code/kern/mm/pmm.c:70 — 零 base/size 及无符号加法回绕由 mem_end<=mem_base 检出，panic 发生于 npage 赋值和 init_memmap 调用之前；非 DRAM_BASE 分支输出实际起点 — 依据：Task 01 SPECIFICATION Case 1、Case 4；未发现此处违反 spec 的问题。
+[NOTE] code/kern/mm/pmm.c:82 — 偏移赋值、物理上界截断、向下页对齐及 PPN 上界计算符合要求；截断使描述符数量最多为 0x8000，描述符大小计算无大整数溢出风险 — 依据：Task 01 SPECIFICATION 后置条件及 Case 2。
+[NOTE] code/kern/mm/pmm.c:90 — pages 使用对齐后的 end 虚拟地址；循环下标为 [0,npage-nbase)，先置 reserved；在描述符存储可容纳的路径中，PADDR 转换后向上页对齐的 freemem 排除了 OpenSBI、内核及描述符页面，未混用页号和数组长度 — 依据：Task 01 GUARANTEE 保留区要求及 SPECIFICATION 地址转换、描述符数组后置条件。
+[NOTE] code/kern/mm/pmm.c:96 — 对 freemem<mem_end 路径仅交付一次非空完整页面区间；其余路径不调用 init_memmap 并有明确 cprintf；page_init 不直接修改空闲链表、nr_free、property 或 ref，初始化委托管理器；此项源码分支符合要求，但受前述描述符越界风险限制 — 依据：Task 01 SPECIFICATION 空闲区后置条件、Case 3 及 Requirements。
+[NOTE] code/kern/mm/pmm.c:64 — 对照 lab2.zip 原始骨架，移除 page_init 插入段并还原 Leader 的第 37 行管理器切换后，pmm.c 与骨架逐字一致；未见无关源码改动 — 依据：Task 01 PROMPT 修改范围、Task 03 SPECIFICATION 前置条件。
+[NOTE] code/kern/mm/pmm.c:119 — 已读取 Leader 提供的 evidence/t3_qemu.txt 与 t3_grade.txt：包含 best_fit_pmm_manager、physical memory map、check_alloc_page() succeeded!、satp 地址及 Test 1/Test 2 OK、Total Score: 20/20；日志未见 panic 或编译诊断，证明默认 128MB 路径的已有验证结果，不能覆盖零值、溢出、异址、截断和无空闲页边界；本次未运行编译、Docker 或 QEMU — 依据：Task 01 GUARANTEE 运行要求、Task 03 RELY 与 PROMPT 只读审查要求。
+结论：NEEDS_FIX

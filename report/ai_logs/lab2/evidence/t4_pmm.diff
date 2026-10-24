@@ -1,0 +1,67 @@
+diff --git a/code/kern/mm/pmm.c b/code/kern/mm/pmm.c
+index 12b5218..9c4d129 100644
+--- a/code/kern/mm/pmm.c
++++ b/code/kern/mm/pmm.c
+@@ -34,7 +34,7 @@ static void check_alloc_page(void);
+ 
+ // init_pmm_manager - initialize a pmm_manager instance
+ static void init_pmm_manager(void) {
+-    pmm_manager = &default_pmm_manager;
++    pmm_manager = &best_fit_pmm_manager;
+     cprintf("memory management: %s\n", pmm_manager->name);
+     pmm_manager->init();
+ }
+@@ -61,7 +61,52 @@ size_t nr_free_pages(void) {
+     return pmm_manager->nr_free_pages();
+ }
+ 
+-//lab2 function1 YOUR CODE
++//lab2 function1 2412172
++static void page_init(void) {
++    uint64_t mem_base = get_memory_base();
++    uint64_t mem_size = get_memory_size();
++    uint64_t mem_end = mem_base + mem_size;
++
++    if (mem_base == 0 || mem_size == 0 || mem_end <= mem_base) {
++        panic("invalid physical memory range: base 0x%016lx, size 0x%016lx",
++              mem_base, mem_size);
++    }
++    if (mem_base != DRAM_BASE) {
++        panic("unsupported physical memory base: 0x%016lx", mem_base);
++    }
++
++    cprintf("physical memory map:\n");
++    cprintf("  memory: 0x%016lx, [0x%016lx, 0x%016lx].\n",
++            mem_size, mem_base, mem_end - 1);
++
++    va_pa_offset = PHYSICAL_MEMORY_OFFSET;
++    if (mem_end > PHYSICAL_MEMORY_END) {
++        mem_end = PHYSICAL_MEMORY_END;
++    }
++    mem_end = ROUNDDOWN(mem_end, PGSIZE);
++    npage = PPN(mem_end);
++
++    extern char end[];
++    pages = (struct Page *)ROUNDUP((uintptr_t)end, PGSIZE);
++    uintptr_t descriptors_end = PADDR(&pages[npage - nbase]);
++    if (descriptors_end > mem_end) {
++        panic("page descriptor array exceeds physical memory: "
++              "array end 0x%016lx, memory end 0x%016lx",
++              descriptors_end, mem_end);
++    }
++    for (size_t i = 0; i < npage - nbase; i ++) {
++        SetPageReserved(&pages[i]);
++    }
++
++    uintptr_t freemem = ROUNDUP(descriptors_end, PGSIZE);
++    if (freemem < mem_end) {
++        init_memmap(pa2page(freemem), (mem_end - freemem) / PGSIZE);
++    } else {
++        cprintf("page_init: no complete free pages remain after page descriptors "
++                "(free start 0x%016lx, memory end 0x%016lx).\n",
++                freemem, mem_end);
++    }
++}
+ 
+ /* pmm_init - initialize the physical memory management */
+ void pmm_init(void) {

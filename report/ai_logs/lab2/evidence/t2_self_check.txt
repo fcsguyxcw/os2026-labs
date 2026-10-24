@@ -1,0 +1,16 @@
+第一步静态自查（仅源码核对，不代表编译或运行通过）：
+1. best_fit_init 初始化空链表，nr_free 置 0。
+2. init_memmap 断言 n > 0、各页 reserved，清 flags/property/ref，设置块头，按地址插入并增加计数。
+3. alloc_pages 断言 n > 0；总量不足直接返回 NULL；无合适块时不修改状态。
+4. 分配完整遍历链表，仅在候选块更小时替换；等长保留地址最低者。即使精确匹配也不提前退出。
+5. 分配从块头切出，剩余块插入原位置，设置剩余块头属性，清已分配块头属性，减少计数。
+6. free_pages 断言 n > 0 以及各页非 reserved、非空闲块头，清 flags/property/ref，按地址插入并增加计数。
+7. 先合并前邻块，再合并后邻块；吸收头清 PG_property 和 property 并移出链表。
+8. nr_free_pages 返回 nr_free；管理器名称正确，6 个函数指针指向本文件 static 函数，check 指向前向声明的 best_fit_check。
+9. basic_check 源码推演：清空链表后的分配失败、三页释放/再分配、恢复旧链表及计数均对应实现。
+10. best_fit_check 源码推演：长度 1 优于长度 2，碎片不能分配 4 页，两块取尽后可释放整段 5 页；恢复链表后两侧合并可恢复总块数及总页数。
+11. 已用字节比较确认：两个测试函数连同后续内容与修改前完全相同；include 区域完全相同。
+12. git diff --check 实际运行无输出，退出码 0。
+13. Docker 单文件编译命令实际退出码 1：permission denied while trying to connect to the docker API at unix:///Users/wesley/.orbstack/run/docker.sock。未进入编译，不能声称无警告或编译通过。
+14. 未执行第二步，未运行 QEMU 或 make grade。等待用户通知。
+15. 已确认 code/bin、code/obj 均不存在；本次 Docker 失败未产生构建产物，无需删除已有文件。

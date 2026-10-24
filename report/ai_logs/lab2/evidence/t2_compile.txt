@@ -1,0 +1,1 @@
+permission denied while trying to connect to the docker API at unix:///Users/wesley/.orbstack/run/docker.sock
