@@ -56,7 +56,9 @@ Codex 回复（2026-10-24 21:50）：`report.md` 补齐分支任务 6 问、实�
 
 Leader（2026-10-24）：
 - 审读分支任务一节：6 问的实测数值均可在 `evidence/t7_*.txt` 中找到；推测（8.2.2 的刷新行为、`sw a2,96(s0)` 反汇编原因）均已标注；第 6 问只记录真实的 Agent 交互。
-- **验证演示稿**：把演示稿主线 A～F 在终端 2、终端 3 要敲的命令原样写成 `evidence/t7_scripts/demo_main.gdb`、`demo_ucore.gdb`，在容器中按三终端顺序批处理运行（`evidence/t8_demo_validation_qemu_gdb.txt`、`t8_demo_validation_ucore_gdb.txt`）：全部命令无报错；`riscv_cpu_tlb_fill:451` 条件断点命中，`step` 进入 `get_physical_address`，`$1`～`$33` 的值与演示稿所列历史值一致（`address=0xffffffffc0207008`、`base=0x80205000`、`idx=511`、`pte=0x200000cf`、`*physical=0x80207000`、返回值 0、`prot=7`、`size=0x1000`、`addend=0xffffafe00000`、`haddr=0xffff70007008`）；终端 3 的 `p/x` 计算出 `0xffffffffc0207008`、`&kern_init = 0xffffffffc02000d6`。可选补充段（Bare 与 [K]）未按演示稿单独重跑，其命令与 Task 07 `bare.gdb` 相同。
+- **验证演示稿**：把演示稿主线 A～F 在终端 2、终端 3 要敲的命令原样写成 `evidence/t7_scripts/demo_main.gdb`、`demo_ucore.gdb`，在容器中按三终端顺序批处理运行（`evidence/t8_demo_validation_qemu_gdb.txt`、`t8_demo_validation_ucore_gdb.txt`）：终端 2（QEMU 侧）全部命令无报错；终端 3（ucore 侧）日志末尾有一行 `Cannot execute this command while the target is running`（**更正**：此处最初误写为“全部命令无报错”，由 Task 14 的 Report Agent 指出，见下方补充）；`riscv_cpu_tlb_fill:451` 条件断点命中，`step` 进入 `get_physical_address`，`$1`～`$33` 的值与演示稿所列历史值一致（`address=0xffffffffc0207008`、`base=0x80205000`、`idx=511`、`pte=0x200000cf`、`*physical=0x80207000`、返回值 0、`prot=7`、`size=0x1000`、`addend=0xffffafe00000`、`haddr=0xffff70007008`）；终端 3 的 `p/x` 计算出 `0xffffffffc0207008`、`&kern_init = 0xffffffffc02000d6`。可选补充段（Bare 与 [K]）未按演示稿单独重跑，其命令与 Task 07 `bare.gdb` 相同。
 - 交互式（真正三个终端手敲）尚未由用户本人练习。
+
+补充（2026-10-24，Task 14 指出后 Leader 复查）：这行提示在 Task 07 的 tracer、paged、bare 三次和本次 demo 共四次运行的 ucore 侧日志里都出现，包括只有 `target remote` + `continue` 的最小脚本。加标记重跑（`evidence/t7_scripts/ucore_marker.gdb` → `evidence/t8_marker_ucore_gdb.txt`）：`MARK-before-continue` 之后出现该提示，`continue` 之后的 `MARK-after-continue` 没有打印；同一次运行中 QEMU 侧断点命中 1 次，控制台输出到 `check_alloc_page() succeeded!` 和 satp 两行（`evidence/t8_marker_console_excerpt.txt`）。QEMU 以 `-S` 启动，必须由 ucore 侧 gdb 发出 continue 才会运行，所以 `continue` 已送达并生效；该提示来自 gdb 批处理模式下 `continue` 之后的处理，与演示命令无关。具体由 gdb 哪一步产生**待确认**。交互式使用时终端 3 的 `continue` 会一直等待，属于预期现象。
 
 状态：**DONE**。

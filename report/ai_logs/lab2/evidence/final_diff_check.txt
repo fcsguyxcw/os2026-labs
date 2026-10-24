@@ -1,0 +1,19 @@
+== diff -rq 原始骨架 vs code/
+Files lab2.zip:lab2_new/kern/mm/best_fit_pmm.c and ./kern/mm/best_fit_pmm.c differ
+Only in ./kern/mm: buddy_pmm.c
+Only in ./kern/mm: buddy_pmm.h
+Files lab2.zip:lab2_new/kern/mm/pmm.c and ./kern/mm/pmm.c differ
+Only in ./kern/mm: slub.c
+Only in ./kern/mm: slub.h
+== YOUR CODE / 学号
+kern/mm/pmm.c:75://lab2 function1 2412172
+kern/mm/slub.c:415:    uint32_t random_state = 0x2412172U;
+kern/mm/best_fit_pmm.c:6://lab2 function2-2 2412172
+== 受保护文件逐字比对
+same  kern/init/entry.S
+same  Makefile
+same  kern/mm/default_pmm.c
+same  tools/grade.sh
+same  tools/test_lab2.c
+same  tools/inject.py
+same  kern/driver/dtb.c

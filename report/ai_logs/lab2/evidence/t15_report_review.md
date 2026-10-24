@@ -1,0 +1,3 @@
+[NOTE] report/ai_logs/lab2/分支任务演示步骤.md:16 — 准备步骤直接启动 ./os2026.sh debug，没有提醒从 Buddy/SLUB 配置切回默认前先清理目标文件；若沿用扩展配置的 obj/bin，Makefile 不会仅因 DEFS 改变而自动重编译，实际 ELF 和历史调试地址可能不同。第55行已有按当前ELF调整目标地址的处理，因此这不是已证实的命令失败；建议准备步骤补 ./os2026.sh clean，再启动默认 debug，减少现场配置歧义 — 依据：os2026.sh:18-23；code/Makefile:34-35 将 DEFS 纳入 CFLAGS，但目标依赖未记录配置值；report/report.md:394 已说明切换配置需清理；Task 15 PROMPT 第4项要求检查初学者演示中的跳步。
+[NOTE] report/report.md:244 — 权限分支只列 SUM/MXR，全文没有解释两者含义；初学者被追问“它们分别怎样改变S态访问和load权限判断”时，现有文字需要额外查源码。建议补充 SUM 允许S态对U页的数据访问但不允许S态从U页取指，MXR 允许把可执行页作为可读页；这是讲解建议，不是当前正常load证据错误 — 依据：QEMU 4.1.1 target/riscv/cpu_helper.c:268-280 的 SUM/访问类型及 MXR 条件；Task 15 PROMPT 第4项要求检查未解释术语，分支指导书第1、2问要求解释关键分支和操作流程。
+结论：PASS

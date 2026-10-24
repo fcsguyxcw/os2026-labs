@@ -1,50 +1,32 @@
-# Lab2 Prompt 汇总
+# Lab 2 提示词汇总（PROMPT / RELY / GUARANTEE / SPECIFICATION）
 
-本文件按任务保存实际四段式提示词。以下从对应 ai_logs 文件逐字复制 `## PROMPT` 至 `## SPECIFICATION` 末尾，保留当时的路径、操作要求和验证计划；历史计划不等于实际执行结果，后者见报告及 ai_logs 的复核记录。
+本文件汇总 Lab 2 各功能模块实现、测试生成、代码审查与 QEMU 源码调试分析所使用的四段式提示词。
+
+---
 
 <a id="task01"></a>
 
-## Task 01：功能模块一·任务一：page_init()
+## 一、功能模块一·任务一：`page_init()` 物理内存探测与初始化（初版）
 
-发送对象：Codex CLI，Implementation/Test Agent，Herdr 面板 w1:p2；发送时间：2026-10-24（北京时间，具体发送时分 TODO）；对应 ai_logs 文件：[task_01.md](ai_logs/lab2/task_01.md)。
+对应过程记录：[task_01.md](ai_logs/lab2/task_01.md)
 
 ````markdown
 ## PROMPT
 
-你是 OS Lab2 的 Implementation/Test Agent。仓库 `/Users/wesley/大三上课程/操作系统/os2026-labs`，当前分支 `lab2`，实验代码在 `code/`。运行环境是 macOS + Docker（OrbStack），必须在镜像 `os2026-dbg`（RISC-V GCC 13.2.0、QEMU 4.1.1）里编译和运行，不要用 Mac 本机或系统自带的 QEMU 8.2.2（lab2 在 8.2.2 上没有任何输出）。
+你是 OS Lab2 的 Implementation/Test Agent。仓库 `/Users/wesley/大三上课程/操作系统/os2026-labs`，当前分支 `lab2`，实验代码在 `code/`。运行环境是 macOS + Docker（OrbStack），在镜像 `os2026-dbg`（RISC-V GCC 13.2.0、QEMU 4.1.1）里编译和运行。
 
 任务：在 `code/kern/mm/pmm.c` 第 64 行注释 `//lab2 function1 YOUR CODE` 的位置实现 `static void page_init(void);`，它被同文件后面的 `pmm_init()` 调用。功能：根据设备树提供的物理内存信息建立 `Page` 描述符数组，把排除了 OpenSBI、内核镜像和描述符数组本身之后剩余的完整空闲页面交给当前 `pmm_manager`（通过同文件里的 `init_memmap()`）。
 
 操作要求：
 1. 必须直接修改仓库里的实际文件，不要只展示代码。
 2. 只允许修改 `code/kern/mm/pmm.c`，并且只在第 64 行注释位置添加 `page_init` 及其需要的静态辅助代码；把这行注释改为 `//lab2 function1 2412172`（保留 `lab2 function1`，把 `YOUR CODE` 换成学号）。
-3. 禁止修改：`pmm.c` 里其它已有函数（包括 `init_pmm_manager()` 里的 `pmm_manager = &default_pmm_manager;`，切换管理器由 Leader 另行完成）、任何头文件、`kern/init/entry.S`、`Makefile`、`tools/*`、`kern/driver/*`、`default_pmm.c`、`best_fit_pmm.c`。不要 git commit / push，不要删除仓库已有文件，不要安装软件或改系统配置。
-4. 另一个 Agent 正在同时修改 `code/kern/mm/best_fit_pmm.c`。仓库原样骨架里该文件引用了未声明的 `free_list`、`nr_free`，所以**仓库目录本身现在编译不过**。编译验证请在临时副本里做：
-   ```bash
-   rm -rf /Users/wesley/大三上课程/操作系统/tmp/lab2-task01
-   mkdir -p /Users/wesley/大三上课程/操作系统/tmp
-   cp -R /Users/wesley/大三上课程/操作系统/os2026-labs/code /Users/wesley/大三上课程/操作系统/tmp/lab2-task01
-   rm -rf /Users/wesley/大三上课程/操作系统/tmp/lab2-task01/bin /Users/wesley/大三上课程/操作系统/tmp/lab2-task01/obj
-   rm /Users/wesley/大三上课程/操作系统/tmp/lab2-task01/kern/mm/best_fit_pmm.c   # 只在副本里删，副本仍使用 default_pmm_manager
-   ```
-   每次改完仓库里的 `pmm.c` 后重新复制一遍再测。副本里不要做其它改动。
-5. 运行命令（输出全部保存，不要编造）：
-   ```bash
-   cd /Users/wesley/大三上课程/操作系统/tmp/lab2-task01
-   docker run --rm -v "$PWD:/code" -w /code os2026-dbg bash -c 'make 2>&1; timeout 10 make qemu' > <evidence>/t1_qemu.txt 2>&1
-   docker run --rm -v "$PWD:/code" -w /code os2026-dbg bash -c 'make grade' > <evidence>/t1_grade.txt 2>&1
-   ```
-   `<evidence>` = `/Users/wesley/大三上课程/操作系统/os2026-labs/report/ai_logs/lab2/evidence`（不存在就创建）。`make qemu` 不会自己退出，退出码 124 是正常的。如果 docker 报连不上 daemon，停止并报告，不要自己处理。
-   另外把 `git -C /Users/wesley/大三上课程/操作系统/os2026-labs diff code/kern/mm/pmm.c` 保存为 `<evidence>/t1_pmm.diff`。
+3. 禁止修改：`pmm.c` 里其它已有函数、任何头文件、`kern/init/entry.S`、`Makefile`、`tools/*`、`kern/driver/*`、`default_pmm.c`、`best_fit_pmm.c`。
 
 输出要求：
-- QEMU 输出中出现 `physical memory map:` 和形如 `  memory: 0x0000000008000000, [0x0000000080000000, 0x0000000087ffffff].` 的一行（大小、起止地址以实际为准，末地址是闭区间），之后 `default_check` 通过并打印 `check_alloc_page() succeeded!` 和 `satp ...` 两行，无 panic。
-- `make grade` 里 Test 1（page init）得满分；副本里没有 Best-Fit，Test 2 失败是预期的。
-- 完成后回复 ≤15 行：做了什么、两条命令的结果、grade 分数、遇到的问题和偏差。不要编造未实际运行得到的输出。
+- QEMU 输出中出现 `physical memory map:` 和形如 `  memory: 0x0000000008000000, [0x0000000080000000, 0x0000000087ffffff].` 的一行（大小、起止地址以实际为准，末地址是闭区间），之后自检通过并打印 `check_alloc_page() succeeded!` 和 `satp ...` 两行，无 panic。
+- `make grade` 里 Test 1（page init）得满分。
 
 ## RELY
-
-均来自 2026-10-24 仓库代码：
 
 - 全局变量（`pmm.c:15-22`）：`struct Page *pages;`（描述符数组的**虚拟地址**）、`size_t npage`（可管理的物理页号上界，注意是 PPN 上界，不是数组长度）、`uint64_t va_pa_offset;`、`const size_t nbase = DRAM_BASE / PGSIZE;`（= 0x80000）。
 - `pmm.c`：`static void init_memmap(struct Page *base, size_t n)` 调用 `pmm_manager->init_memmap(base, n)`；`pmm_init()` 依次调用 `init_pmm_manager()`、`page_init()`、`check_alloc_page()`。
@@ -54,8 +36,8 @@
 - `kern/mm/mmu.h`：`PGSIZE 4096`、`PGSHIFT 12`、`PPN(la)`；`libs/riscv.h`：`DRAM_BASE 0x80000000`；`libs/defs.h`：`ROUNDUP(a, n)`、`ROUNDDOWN(a, n)`。
 - `tools/kernel.ld`：`PROVIDE(end = .);`，`end` 是内核镜像结尾的**虚拟地址**（在 C 里 `extern char end[];`）。
 - `kern/debug/assert.h`：`panic(...)`；`cprintf` 来自 `stdio.h`（`pmm.c` 已包含）。
-- 内存布局（指导书 `实验指导书/lab2/lab2_3_5_2_search_phymem_layout.md`）：OpenSBI 占 `[0x80000000, 0x80200000)`；内核占 `[0x80200000, KernelEnd)`；`Page` 描述符数组连续排在内核镜像之后，起点为 `end` 向上按页对齐；数组末尾用 `PADDR` 转成物理地址后再向上按页对齐，才是空闲区起点；设备树报告的内存末端（还要受 `PHYSICAL_MEMORY_END` 限制）向下按页对齐；只有两者之间非空的完整页面区间才能交给 `init_memmap()`；在空闲区建立之前，所有描述符都应先处于保留状态。`end` 是虚拟地址、`KernelEnd` 是物理地址，不能混用。
-- 自动检查 `tools/test_lab2.c`（`make grade` 在临时副本里注入到 `pmm_init()` 末尾）Test 1 检查：`va_pa_offset == PHYSICAL_MEMORY_OFFSET`；`get_memory_base()`、`get_memory_size()` 非 0；`npage == PPN(mem_base + mem_size)` 且 `npage > nbase`；`pages` 非空、按页对齐、`>= ROUNDUP(end, PGSIZE)`；`nr_free_pages()` 非 0 且 `<= npage - nbase`；`pa2page(PADDR(end))` 和 `pages` 数组起始物理页都是 `PageReserved`；`pa2page(page2pa(q)) == q`。
+- 内存布局：OpenSBI 占 `[0x80000000, 0x80200000)`；内核占 `[0x80200000, KernelEnd)`；`Page` 描述符数组连续排在内核镜像之后，起点为 `end` 向上按页对齐；数组末尾用 `PADDR` 转成物理地址后再向上按页对齐，才是空闲区起点；设备树报告的内存末端（还要受 `PHYSICAL_MEMORY_END` 限制）向下按页对齐；只有两者之间非空的完整页面区间才能交给 `init_memmap()`；在空闲区建立之前，所有描述符都应先处于保留状态。`end` 是虚拟地址、`KernelEnd` 是物理地址，不能混用。
+- 自动检查 `tools/test_lab2.c` Test 1 检查：`va_pa_offset == PHYSICAL_MEMORY_OFFSET`；`get_memory_base()`、`get_memory_size()` 非 0；`npage == PPN(mem_base + mem_size)` 且 `npage > nbase`；`pages` 非空、按页对齐、`>= ROUNDUP(end, PGSIZE)`；`nr_free_pages()` 非 0 且 `<= npage - nbase`；`pa2page(PADDR(end))` 和 `pages` 数组起始物理页都是 `PageReserved`；`pa2page(page2pa(q)) == q`。
 
 ## GUARANTEE
 
@@ -63,7 +45,6 @@
 - 成功返回时：`va_pa_offset`、`npage`、`pages` 已正确设置；已打印 `physical memory map:` 及内存范围行；当前 `pmm_manager` 已通过 `init_memmap()` 注册了唯一一段初始空闲区。
 - 内核镜像、描述符数组所在的页面，以及 `[DRAM_BASE, 0x80200000)`，都不在空闲区内且保持 `PG_reserved`。
 - 不破坏任何现有接口；编译无警告（编译选项含 `-Werror`）。
-- 副本中 `make qemu` 无 panic 并打印 `check_alloc_page() succeeded!`；`make grade` Test 1 满分。
 
 ## SPECIFICATION
 
@@ -90,181 +71,30 @@
   - 计算过程中不要把虚拟地址和物理地址混用：`end`、`pages` 是虚拟地址，转物理地址只能用 `PADDR`；描述符下标 = 物理页号 − `nbase`。
   - 初始空闲区的 `Page` 字段（`property`、`PG_property`、`ref`、链表）由 `pmm_manager->init_memmap` 负责设置，`page_init` 只负责把整段交过去。
   - 不引入与本任务无关的功能。
-
 ````
 
-<a id="task02"></a>
-
-## Task 02：功能模块二·任务二：Best-Fit
-
-发送对象：Codex CLI，Implementation/Test Agent，Herdr 面板 w1:p3；发送时间：2026-10-24（北京时间，具体发送时分 TODO）；对应 ai_logs 文件：[task_02.md](ai_logs/lab2/task_02.md)。
-
-````markdown
-## PROMPT
-
-你是 OS Lab2 的 Implementation/Test Agent。仓库 `/Users/wesley/大三上课程/操作系统/os2026-labs`，当前分支 `lab2`，实验代码在 `code/`。运行环境是 macOS + Docker（OrbStack），必须在镜像 `os2026-dbg`（RISC-V GCC 13.2.0、QEMU 4.1.1）里编译和运行，不要用 Mac 本机或系统自带的 QEMU 8.2.2。
-
-任务：在 `code/kern/mm/best_fit_pmm.c` 第 6 行注释 `//lab2 function2-2 YOUR CODE` 的位置，实现完整的 Best-Fit 连续物理内存分配模块，并定义 `const struct pmm_manager best_fit_pmm_manager` 完成注册（`best_fit_pmm.h` 已声明 `extern const struct pmm_manager best_fit_pmm_manager;`），使它能替换内核当前使用的 First-Fit 管理器 `default_pmm_manager`。
-
-Best-Fit 的含义：分配 n 页时，在所有长度 ≥ n 的空闲连续块中，选择**长度最小**的那一块；长度相同时选地址最低的那一块。块比 n 大时，从块头切出 n 页分配出去，剩余部分成为新的空闲块。释放时把页面放回空闲链表，并与地址上紧邻的前后空闲块合并。
-
-操作要求：
-1. 必须直接修改仓库里的实际文件，不要只展示代码。
-2. 只允许修改 `code/kern/mm/best_fit_pmm.c`：在第 6 行注释位置写入实现（内部状态、管理函数、`best_fit_pmm_manager` 定义；`best_fit_pmm_manager` 的 `.check` 要指向本文件的 `best_fit_check`，因为它定义在注释位置之后，需要在注释位置先写前向声明 `static void best_fit_check(void);`，或者把 `best_fit_pmm_manager` 的定义放到文件末尾，二选一）。把这行注释改为 `//lab2 function2-2 2412172`（保留 `lab2 function2-2`，把 `YOUR CODE` 换成学号）。
-3. 禁止修改：`basic_check()`、`best_fit_check()` 两个测试函数（一个字符都不要动）；任何头文件中已有的结构体、宏和接口；`pmm.c`（另一个 Agent 正在改它，切换管理器由 Leader 完成）、`default_pmm.c`、`kern/init/entry.S`、`Makefile`、`tools/*`、`kern/driver/*`。不要 git commit / push，不要删除仓库已有文件，不要安装软件或改系统配置。
-4. 编译验证分两步：
-   - 第一步（现在就做）：仓库的 `pmm.c` 里 `page_init()` 还没有实现，内核暂时链接不过。先只检查本文件能否单独编译通过：
-     ```bash
-     cd /Users/wesley/大三上课程/操作系统/os2026-labs/code
-     docker run --rm -v "$PWD:/code" -w /code os2026-dbg bash -c 'make obj/kern/mm/best_fit_pmm.o 2>&1 || make 2>&1 | grep -n best_fit' > <evidence>/t2_compile.txt 2>&1
-     ```
-     （如果 Makefile 没有这个单文件目标，就跑 `make` 并确认报错里**没有**任何来自 `best_fit_pmm.c` 的错误或警告，剩下的只应是 `page_init` 未定义。）跑完删掉仓库里生成的 `code/bin`、`code/obj`。然后**对照下方 SPECIFICATION 和两个测试函数逐条自查**，回复 Leader，并等待通知。
-   - 第二步（等 Leader 通知 `page_init` 已完成后再做）：复制副本，在副本里把 `init_pmm_manager()` 中的 `&default_pmm_manager` 改成 `&best_fit_pmm_manager`，然后运行：
-     ```bash
-     rm -rf /Users/wesley/大三上课程/操作系统/tmp/lab2-task02 && mkdir -p /Users/wesley/大三上课程/操作系统/tmp
-     cp -R /Users/wesley/大三上课程/操作系统/os2026-labs/code /Users/wesley/大三上课程/操作系统/tmp/lab2-task02
-     rm -rf /Users/wesley/大三上课程/操作系统/tmp/lab2-task02/bin /Users/wesley/大三上课程/操作系统/tmp/lab2-task02/obj
-     # 副本里改 init_pmm_manager 这一行
-     cd /Users/wesley/大三上课程/操作系统/tmp/lab2-task02
-     docker run --rm -v "$PWD:/code" -w /code os2026-dbg bash -c 'make 2>&1; timeout 10 make qemu' > <evidence>/t2_qemu.txt 2>&1
-     docker run --rm -v "$PWD:/code" -w /code os2026-dbg bash -c 'make grade' > <evidence>/t2_grade.txt 2>&1
-     ```
-   `<evidence>` = `/Users/wesley/大三上课程/操作系统/os2026-labs/report/ai_logs/lab2/evidence`（不存在就创建）。`make qemu` 不会自己退出，退出码 124 正常。docker 报连不上 daemon 时停止并报告。
-   最后把 `git -C /Users/wesley/大三上课程/操作系统/os2026-labs diff code/kern/mm/best_fit_pmm.c` 保存为 `<evidence>/t2_best_fit.diff`。
-
-输出要求：
-- 必须通过本文件的 `basic_check()` 和 `best_fit_check()`（由 `pmm_manager->check()` 调用）；内核输出 `memory management: best_fit_pmm_manager`、`check_alloc_page() succeeded!`，无 panic。
-- `make grade` 总分 20/20（Test 2 检查 `pmm_manager == &best_fit_pmm_manager`）。
-- 每一步完成后回复 ≤15 行：做了什么、命令结果、遇到的问题和偏差。不要编造未实际运行得到的输出。
-
-## RELY
-
-均来自 2026-10-24 仓库代码：
-
-- `kern/mm/pmm.h`：
-  ```c
-  struct pmm_manager {
-      const char *name;
-      void (*init)(void);
-      void (*init_memmap)(struct Page *base, size_t n);
-      struct Page *(*alloc_pages)(size_t n);
-      void (*free_pages)(struct Page *base, size_t n);
-      size_t (*nr_free_pages)(void);
-      void (*check)(void);
-  };
-  ```
-  `alloc_page()` = `alloc_pages(1)`，`free_page(p)` = `free_pages(p, 1)`；`page_ref`、`set_page_ref`、`page2pa`。
-- `kern/mm/memlayout.h`：`struct Page { int ref; uint64_t flags; unsigned int property; list_entry_t page_link; }`；`PG_reserved`（bit 0）、`PG_property`（bit 1，置位表示该页是一个空闲块的头页）及 `SetPageReserved/ClearPageReserved/PageReserved/SetPageProperty/ClearPageProperty/PageProperty`；`le2page(le, member)`；`typedef struct { list_entry_t free_list; unsigned int nr_free; } free_area_t;`。
-- `libs/list.h`：`list_init`、`list_add`（= `list_add_after`）、`list_add_before`、`list_add_after`、`list_del`、`list_empty`、`list_next`、`list_prev`。
-- `kern/debug/assert.h`：`assert`；`libs/string.h` 未包含时需要自行 include。
-- 参考实现 `kern/mm/default_pmm.c`（First-Fit）：`static free_area_t free_area;`、`#define free_list (free_area.free_list)`、`#define nr_free (free_area.nr_free)`；空闲链表按地址升序；空闲块头页 `property` = 块长度且置 `PG_property`，块内其它页 `property = 0`；`init_memmap` 初始化每页（`assert(PageReserved(p))`、`flags = property = 0`、`set_page_ref(p, 0)`），按地址插入；`free_pages` 后与前后相邻块合并。
-- **测试函数直接使用的名字和约定**（`best_fit_pmm.c` 里 `basic_check`、`best_fit_check`）：
-  - 直接读写 `free_list`（`list_entry_t` 左值，被整体保存/恢复：`free_list_store = free_list; list_init(&free_list); ... free_list = free_list_store;`）和 `nr_free`（`unsigned int` 左值）。所以本文件里必须有这两个同名对象（建议沿用 `free_area` + 两个宏）。
-  - 遍历 `free_list` 时，每个节点 `le2page(le, page_link)` 都必须 `PageProperty(p)` 为真，所有节点 `p->property` 之和 == `nr_free_pages()`；空闲链表上只放块的头页。
-  - `alloc_pages(5)` 返回的 `p0` 满足 `!PageProperty(p0)`。
-  - 在清空的链表上依次 `free_pages(p0 + 1, 2)`、`free_pages(p0 + 4, 1)` 后：`alloc_pages(4) == NULL`；`PageProperty(p0 + 1) && p0[1].property == 2`；随后 `alloc_pages(1)` 必须返回 `p0 + 4`（长度 1 的块比长度 2 的块更合适），`alloc_pages(2)` 非空。
-  - `free_pages(p0, 5)` 时，`p0` 的 5 页里有已经在空闲链表上的头页之外的页（测试先把 `p0+1`、`p0+4` 分配掉了），之后 `alloc_pages(5)` 必须能拿到整块 5 页——释放和合并必须正确。
-  - 测试结束时 `nr_free`、链表恢复原状，`count == 0 && total == 0`。
-
-## GUARANTEE
-
-- 定义 `const struct pmm_manager best_fit_pmm_manager`，`name` 为 `"best_fit_pmm_manager"`，6 个函数指针全部指向本文件实现的 `static` 函数，`.check` 指向 `best_fit_check`。
-- 对外接口只通过 `best_fit_pmm_manager`；可以添加只在本文件内部使用的 `static` 辅助函数。
-- `basic_check()`、`best_fit_check()` 与原文件逐字一致。
-- 编译无警告（`-Werror`）。
-- 在已实现 `page_init` 的副本中：内核运行通过两个测试函数，`make grade` 20/20。
-
-## SPECIFICATION
-
-### best_fit_init
-- Preconditions：内核启动时由 `init_pmm_manager()` 调用一次。
-- Postconditions：`free_list` 为空链表，`nr_free == 0`。
-
-### best_fit_init_memmap(base, n)
-- Preconditions：`n > 0`；`base[0..n-1]` 都是 `PG_reserved` 状态的描述符，物理上连续，且与已有空闲块不重叠。
-- Postconditions：每页 `flags` 清零（包括 `PG_reserved`）、`property = 0`、`ref = 0`；`base->property = n` 并置 `PG_property`；`base` 按地址升序插入 `free_list`；`nr_free += n`。
-- Edge cases：`n == 0` 时 `assert` 失败。
-
-### best_fit_alloc_pages(n)
-- Preconditions：`n > 0`；`free_list` 与 `nr_free` 正确维护。
-- Case 1（`n > nr_free`，或没有长度 ≥ n 的块）：返回 `NULL`；`free_list`、`nr_free`、所有页状态都不变。
-- Case 2（找到块）：遍历整个 `free_list`，选 `property >= n` 中 `property` 最小的块（相同时取地址最低，即遍历中先遇到的那个）。把该块从链表摘下；若 `property > n`，`base + n` 成为新空闲块头：`property = 原长度 − n`、置 `PG_property`，插回原块在链表中的位置（保持地址升序）。被分配块头页 `ClearPageProperty`；`nr_free -= n`；返回块头页。
-- Case 3（`n == 0`）：`assert` 失败。
-- Requirements：必须完整遍历后再决定，不能遇到第一个够用的块就返回（那是 First-Fit）。
-
-### best_fit_free_pages(base, n)
-- Preconditions：`n > 0`；`base[0..n-1]` 是此前分配出去的页，不是 `PG_reserved`，也不是空闲块头。
-- Postconditions：每页 `flags` 清零、`ref = 0`；`base->property = n`，置 `PG_property`；按地址升序插入 `free_list`；`nr_free += n`；若前一个空闲块的结尾正好是 `base`，与之合并；若 `base + base->property` 正好是后一个空闲块的头，与之合并；合并后被吸收的头页 `ClearPageProperty` 并移出链表，`property` 清 0。
-- Edge cases：`n == 0` 时 `assert` 失败；`free_list` 为空时直接插入。
-
-### best_fit_nr_free_pages
-- Postconditions：返回 `nr_free`。
-
-````
-
-<a id="task03"></a>
-
-## Task 03：Review 提示词：page_init 与 Best-Fit 交叉审查
-
-发送对象：Codex CLI，Review Agent，Herdr 面板 w1:p2、w1:p3；发送时间：2026-10-24（北京时间，具体发送时分 TODO）；对应 ai_logs 文件：[task_03.md](ai_logs/lab2/task_03.md)。
-
-````markdown
-## PROMPT
-
-你是 OS Lab2 的 Review Agent。只读审查，**不要修改任何文件**（只允许新建下面指定的 review 结果文件），不要 git commit / push。
-
-背景：Task 01（page_init）和 Task 02（Best-Fit）已实现，Leader 已在 `code/kern/mm/pmm.c` 的 `init_pmm_manager()` 把管理器切换为 `&best_fit_pmm_manager`，并在 Docker 镜像 os2026-dbg 中实际运行：`make qemu` 输出见 `evidence/t3_qemu.txt`，`make grade` 结果 20/20 见 `evidence/t3_grade.txt`。你所在的沙箱无法访问 Docker，所以不要尝试运行编译或 QEMU；只做代码审查。
-
-任务：对照被审任务 `task_0X.md` 中的 GUARANTEE 和 SPECIFICATION，逐条审查 `git -C /Users/wesley/大三上课程/操作系统/os2026-labs diff code/` 中对应文件的实现。重点：
-- 是否有违反 SPECIFICATION 的分支（含 edge cases）；
-- 虚拟地址 / 物理地址 / 页号 / 描述符下标是否混用；
-- 链表、`nr_free`、`PG_property`、`PG_reserved` 的不变量是否在每个分支都保持；
-- 测试没有覆盖、但 spec 要求的行为。
-
-输出：把结论写入 `<lab2 日志目录>/evidence/t3_review_<被审对象>.md`（page_init 或 best_fit），格式：每条发现一行，`[MUST_FIX|SHOULD_FIX|NOTE] 文件:行号 — 问题 — 依据（spec 的哪一条）`；最后一行写 `结论：PASS` 或 `结论：NEEDS_FIX`。回复 ≤10 行摘要。不要把推测写成确定结论，不确定的标 NOTE。
-
-## RELY
-
-- 被审规格：`task_01.md`（page_init）、`task_02.md`（Best-Fit）。
-- 运行证据：`evidence/t3_qemu.txt`、`evidence/t3_grade.txt`。
-- 原始骨架（只读）：`/Users/wesley/大三上课程/操作系统/课程代码包/lab2.zip`。
-
-## GUARANTEE
-
-- 不修改任何源码和已有日志文件；只新建一个 review 结果文件。
-- 每条发现都给出文件行号和 spec 依据。
-
-## SPECIFICATION
-
-- Preconditions：工作区包含 Task 01、02 的实现和 Leader 的一行切换改动。
-- Postconditions：review 文件存在，最后一行为 PASS 或 NEEDS_FIX。
-- Edge cases：发现测试无法覆盖的问题时照样报告；没有发现问题时写明“未发现违反 spec 的问题”并 PASS。
-
-````
+---
 
 <a id="task04"></a>
 
-## Task 04：page_init 描述符越界修复
+## 二、功能模块一·任务一：`page_init()` 描述符数组越界检查修复（迭代版）
 
-发送对象：Codex CLI，Debug Agent，Herdr 面板 w1:p2；发送时间：2026-10-24（北京时间，具体发送时分 TODO）；对应 ai_logs 文件：[task_04.md](ai_logs/lab2/task_04.md)。
+对应过程记录：[task_04.md](ai_logs/lab2/task_04.md)
 
 ````markdown
 ## PROMPT
 
-你是 OS Lab2 的 Debug Agent。仓库 `/Users/wesley/大三上课程/操作系统/os2026-labs`，分支 `lab2`。你的沙箱无法访问 Docker，不要尝试编译运行；Leader 会在 Docker 中验证。
+问题：`code/kern/mm/pmm.c` 的 `page_init()` 在把 `pages[0 .. npage-nbase)` 全部置 `PG_reserved` 之前，没有确认描述符数组本身落在可管理的物理内存内。若设备树报告的内存很小（例如 base=0x80000000、size=0x208000，内核仍放得下），描述符数组末端会超过内存末端，循环写入越界内存。
 
-问题（来自 `evidence/t3_review_page_init.md` 的 MUST_FIX）：`code/kern/mm/pmm.c` 的 `page_init()` 在把 `pages[0 .. npage-nbase)` 全部置 `PG_reserved` 之前，没有确认描述符数组本身落在可管理的物理内存内。若设备树报告的内存很小（例如 base=0x80000000、size=0x208000，内核仍放得下），描述符数组末端会超过内存末端，循环写入越界内存。
-
-任务：只修改 `code/kern/mm/pmm.c` 里的 `page_init()`，在写入任何描述符之前增加检查。
+任务：只修改 `code/kern/mm/pmm.c` 里的 `page_init()`，在写入任何描述符之前增加容量边界检查。
 
 操作要求：
-1. 直接修改实际文件；只改 `page_init()` 函数体，其它代码（包括 Leader 改过的 `init_pmm_manager()`、学号注释行）一律不动。
-2. 不要 git commit / push，不要改其它文件。
-3. 完成后把 `git diff code/kern/mm/pmm.c` 保存为 `<lab2 日志目录>/evidence/t4_pmm.diff`，回复 ≤8 行。
+1. 直接修改实际文件；只改 `page_init()` 函数体，其它代码（包括 `init_pmm_manager()`、学号注释行）一律不动。
+2. 不要修改其它文件。
 
 ## RELY
 
-- 当前 `page_init()` 实现见 `git diff code/kern/mm/pmm.c`（Task 01 产物）。
+- 当前 `page_init()` 实现（初版产物）。
 - `PADDR(kva)`：`kva < KERNBASE` 时 panic，否则返回 `kva - va_pa_offset`；`va_pa_offset` 必须先赋值再用 `PADDR`。
 - `pages = ROUNDUP(end, PGSIZE)`；描述符数组物理末端 = `PADDR(&pages[npage - nbase])`（只计算地址，不解引用）。
 - `mem_end`：已按 `PHYSICAL_MEMORY_END` 截断并向下按页对齐的可管理上界（物理地址）。
@@ -281,142 +111,395 @@ Best-Fit 的含义：分配 n 页时，在所有长度 ≥ n 的空闲连续块�
 
 - Case 5（新增）：`PADDR(&pages[npage - nbase]) > mem_end`，即描述符数组超出可管理物理内存：在置位任何 `PG_reserved` 之前 `panic`，信息包含数组物理末端和 `mem_end`。
 - Case 3（修订）：数组放得下，但 `ROUNDUP(数组物理末端, PGSIZE) >= mem_end`，即数组之后没有完整空闲页：照旧先把全部描述符置 `PG_reserved`，不调用 `init_memmap()`，用 `cprintf` 输出原因。
-- 其余 Preconditions / Postconditions 与 Task 01 相同。
-
+- 其余 Preconditions / Postconditions 与初版相同。
 ````
 
-## 功能模块二·任务三：Buddy System
+---
 
-### 实现提示词
+<a id="task02"></a>
 
-TODO
+## 三、功能模块二·任务二：Best-Fit 连续物理内存分配器
 
-### 测试提示词
+对应过程记录：[task_02.md](ai_logs/lab2/task_02.md)
 
-TODO
+````markdown
+## PROMPT
 
-## 功能模块二·任务四：SLUB
+任务：在 `code/kern/mm/best_fit_pmm.c` 第 6 行注释 `//lab2 function2-2 YOUR CODE` 的位置，实现完整的 Best-Fit 连续物理内存分配模块，并定义 `const struct pmm_manager best_fit_pmm_manager` 完成注册（`best_fit_pmm.h` 已声明 `extern const struct pmm_manager best_fit_pmm_manager;`），使它能替换内核当前使用的 First-Fit 管理器 `default_pmm_manager`。
 
-### 实现提示词
+Best-Fit 的含义：分配 n 页时，在所有长度 ≥ n 的空闲连续块中，选择**长度最小**的那一块；长度相同时选地址最低的那一块。块比 n 大时，从块头切出 n 页分配出去，剩余部分成为新的空闲块。释放时把页面放回空闲链表，并与地址上紧邻的前后空闲块合并。
 
-TODO
+操作要求：
+1. 必须直接修改仓库里的实际文件，不要只展示代码。
+2. 只允许修改 `code/kern/mm/best_fit_pmm.c`：在第 6 行注释位置写入实现（内部状态、管理函数、`best_fit_pmm_manager` 定义；`best_fit_pmm_manager` 的 `.check` 指向本文件的 `best_fit_check`，在注释位置先写前向声明 `static void best_fit_check(void);`）。把这行注释改为 `//lab2 function2-2 2412172`（保留 `lab2 function2-2`，把 `YOUR CODE` 换成学号）。
+3. 禁止修改：`basic_check()`、`best_fit_check()` 两个测试函数（一个字符都不要动）；任何头文件中已有的结构体、宏和接口；`default_pmm.c`、`kern/init/entry.S`、`Makefile`、`tools/*`、`kern/driver/*`。
 
-### 测试提示词
+输出要求：
+- 编译无警告（编译选项含 `-Werror`）。
+- 在 `pmm.c` 的 `init_pmm_manager()` 切换为 `pmm_manager = &best_fit_pmm_manager;` 后，内核启动打印 `memory management: best_fit_pmm_manager`，`basic_check()` 和 `best_fit_check()` 全部断言通过并打印 `check_alloc_page() succeeded!`；`make grade` Test 2 得满分。
 
-TODO
+## RELY
 
+- `kern/mm/pmm.h`：
+  ```c
+  struct pmm_manager {
+      const char *name;
+      void (*init)(void);
+      void (*init_memmap)(struct Page *base, size_t n);
+      struct Page *(*alloc_pages)(size_t n);
+      void (*free_pages)(struct Page *base, size_t n);
+      size_t (*nr_free_pages)(void);
+      void (*check)(void);
+  };
+  ```
+  以及 `page2pa`、`pa2page`、`alloc_page()`/`free_page()`（单页包装）、`npage`。
+- `kern/mm/memlayout.h`：`struct Page { int ref; uint64_t flags; unsigned int property; list_entry_t page_link; }`；`PG_reserved`、`PG_property`；`SetPageReserved/ClearPageReserved/PageReserved`、`SetPageProperty/ClearPageProperty/PageProperty`；`set_page_ref`/`page_ref`；`le2page(le, member)`；`free_area_t { list_entry_t free_list; unsigned int nr_free; }`。
+- `libs/list.h`：双向循环链表 `list_init`、`list_add`、`list_add_before`、`list_add_after`、`list_del`、`list_empty`、`list_next`、`list_prev`。
+- `kern/mm/best_fit_pmm.h`：已声明 `extern const struct pmm_manager best_fit_pmm_manager;`。
+- `kern/mm/best_fit_pmm.c` 已有的 `basic_check()` 和 `best_fit_check()` 直接读写文件级标识符 `free_list` 和 `nr_free`（例如 `list_empty(&free_list)`、`nr_free = 0`、`le2page(le, page_link)`、检查 `p->property` 和 `PageProperty(p)`），并且 `best_fit_check` 依赖以下约定：
+  - 空闲链表按页地址**升序**排列，只把每个空闲连续块的**第一页（块头）**挂进 `free_list`；
+  - 空闲块头的 `p->property` = 该连续块的页数，且 `PageProperty(p)` 为真；块内其余页及已分配页的 `PageProperty` 为假；
+  - 分配时若块长 `> n`，取块的前 `n` 页返回，后 `p->property - n` 页留在原链表位置作为新块头；
+  - 释放时按地址升序插入 `free_list`，若与前一个空闲块紧邻（`prev + prev->property == base`）则合并到前块，若与后一个空闲块紧邻（`base + base->property == next`）则把后块合并进来，被吸收的块头清除 `PG_property` 并从链表删除。
+- 参考实现：`kern/mm/default_pmm.c`（完整的 First-Fit 实现，除了 `alloc_pages` 的选块策略是“第一个 `p->property >= n` 就 break”之外，其余数据结构和链表维护方式与上面完全一致）。
+
+## GUARANTEE
+
+- 在 `best_fit_pmm.c` 中定义静态 `free_area` 及 `free_list`、`nr_free` 宏，实现 `best_fit_init`、`best_fit_init_memmap`、`best_fit_alloc_pages`、`best_fit_free_pages`、`best_fit_nr_free_pages`（以及需要的内部 `static` 辅助函数），并定义 `const struct pmm_manager best_fit_pmm_manager`（`name = "best_fit_pmm_manager"`，`.check = best_fit_check`）。
+- 保留 `basic_check`、`best_fit_check` 原文不变。
+- 编译无警告。
+
+## SPECIFICATION
+
+### best_fit_init
+- Preconditions：无。
+- Postconditions：`free_list` 为空链表，`nr_free == 0`。
+
+### best_fit_init_memmap(base, n)
+- Preconditions：`n > 0`；`[base, base + n)` 内每一页当前都是 `PageReserved(p)`。
+- Postconditions：
+  - `[base, base + n)` 每页 `flags = 0`、`property = 0`、`ref = 0`；
+  - `base->property = n` 且 `SetPageProperty(base)`；
+  - `base` 按地址升序插入 `free_list`（链表中所有节点满足地址严格递增）；
+  - `nr_free` 增加 `n`。
+
+### best_fit_alloc_pages(n)
+- Preconditions：`n > 0`；`free_list` 按地址升序排列，`nr_free` 等于链表各块 `property` 之和。
+- Case 1：`n > nr_free`，或链表中没有任何 `p->property >= n` 的块：返回 `NULL`，`free_list` 和 `nr_free` 不变。
+- Case 2：存在一个或多个 `p->property >= n` 的块：
+  - **完整遍历** `free_list`，选出满足 `p->property >= n` 且 `p->property` **最小**的块 `page`（遇到相同最小长度时保留先遇到的，即地址较低的块）；
+  - 从 `free_list` 中移除 `page`；
+  - 若 `page->property > n`：令 `rest = page + n`，设置 `rest->property = page->property - n`、`SetPageProperty(rest)`，把 `rest` 插回 `page` 原来的位置（保持链表按地址升序）；
+  - `ClearPageProperty(page)`（并把 `page->property` 置 0），`nr_free -= n`，返回 `page`。
+
+### best_fit_free_pages(base, n)
+- Preconditions：`n > 0`；`[base, base + n)` 内每一页都不是 `PageReserved` 且都不是 `PageProperty`。
+- Postconditions：
+  - `[base, base + n)` 每页 `flags = 0`、`property = 0`、`ref = 0`；
+  - `base->property = n`，`SetPageProperty(base)`，`nr_free += n`；
+  - 把 `base` 按地址升序插入 `free_list`；
+  - 若前驱节点 `prev` 满足 `prev + prev->property == base`：`prev->property += base->property`，`ClearPageProperty(base)`，从链表删除 `base`，并令 `base = prev`；
+  - 若后继节点 `next` 满足 `base + base->property == next`：`base->property += next->property`，`ClearPageProperty(next)`，从链表删除 `next`。
+
+### best_fit_nr_free_pages
+- Postconditions：返回 `nr_free`。
+````
+
+---
+
+<a id="task03"></a>
+
+## 四、`page_init` 与 Best-Fit 交叉代码审查提示词
+
+对应过程记录：[task_03.md](ai_logs/lab2/task_03.md)
+
+````markdown
+## PROMPT
+
+任务：对照 `page_init` 与 `Best-Fit` 的 GUARANTEE 和 SPECIFICATION，逐条审查 `code/kern/mm/pmm.c` 与 `code/kern/mm/best_fit_pmm.c` 的实现。重点：
+- 是否有违反 SPECIFICATION 的分支（含 edge cases）；
+- 虚拟地址 / 物理地址 / 页号 / 描述符下标是否混用；
+- 链表、`nr_free`、`PG_property`、`PG_reserved` 的不变量是否在每个分支都保持；
+- 测试没有覆盖、但 spec 要求的行为。
+
+输出：按 `[MUST_FIX|SHOULD_FIX|NOTE] 文件:行号 — 问题 — 依据（spec 的哪一条）` 列出审查发现，最后给出 `结论：PASS` 或 `结论：NEEDS_FIX`。
+
+## RELY
+
+- 被审规格：`page_init` 与 `Best-Fit` 的四段式规格。
+- 运行证据：`make qemu` 与 `make grade`（20/20）输出日志。
+- 原始骨架：课程代码包 `lab2.zip`。
+
+## GUARANTEE
+
+- 只读审查，不修改源码。
+- 每条发现都给出文件行号和 spec 依据。
+
+## SPECIFICATION
+
+- Preconditions：工作区包含 `page_init`、`Best-Fit` 的实现和 `init_pmm_manager()` 的切换改动。
+- Postconditions：输出完整审查报告，最后一行为 PASS 或 NEEDS_FIX。
+- Edge cases：发现现有测试未覆盖的边界漏洞时照样报告；没有发现问题时写明“未发现违反 spec 的问题”并 PASS。
+````
+
+---
+
+<a id="task09"></a>
+
+## 五、功能模块二·任务三：Buddy System 实现提示词（第一份）
+
+对应过程记录：[task_09.md](ai_logs/lab2/task_09.md)
+
+````markdown
+## PROMPT
+
+任务：参考现有 ucore 物理内存管理框架（`struct pmm_manager`，以及 `default_pmm.c` 的 First-Fit、`best_fit_pmm.c` 的 Best-Fit 写法），从零实现一个 **Buddy System（伙伴系统）物理页分配器**，作为新的 `pmm_manager` 接入内核。
+
+Buddy System 的含义：所有空闲块的大小都是 2 的幂（1、2、4、8… 页），一个 order 为 k 的块包含 2^k 页，且其起始页下标（相对于本管理器管理区域的起点）是 2^k 的整数倍。分配 n 页时，把 n 向上取整到 2^k，从 order k 的空闲链表取块；没有就从更大的 order 取一块，逐级对半拆分，拆出的另一半（伙伴）放回对应 order 的链表。释放时，检查同 order 的伙伴块（下标为 `idx ^ (1 << k)`）是否空闲且 order 相同，是就合并成 order k+1 的块并继续向上检查，直到伙伴不空闲或到达最大 order。
+
+操作要求：
+1. 必须直接修改实际文件。新建 `code/kern/mm/buddy_pmm.h` 和 `code/kern/mm/buddy_pmm.c`（`kern/mm/` 下的 `.c` 会被 Makefile 自动编译，不需要改 Makefile）。
+2. `buddy_pmm.h` 声明 `extern const struct pmm_manager buddy_pmm_manager;` 和 `void buddy_check(void);`。
+3. `buddy_pmm.c` 定义 `buddy_pmm_manager`（`name = "buddy_pmm_manager"`），`.check` 指向 `buddy_check`。`buddy_check` 测试函数由第二份提示词单独生成，本阶段先提供最小占位实现。
+4. 在 `pmm.c` 中通过编译宏 `LAB2_PMM_BUDDY` 接入：`make DEFS=-DLAB2_PMM_BUDDY` 时 `init_pmm_manager()` 使用 `&buddy_pmm_manager`；默认编译仍用 Best-Fit。
+
+输出要求：
+- `make DEFS=-DLAB2_PMM_BUDDY` 编译无警告（`-Werror`），内核打印 `memory management: buddy_pmm_manager`、`physical memory map:`、`check_alloc_page() succeeded!`，无 panic。
+- 默认 `make` 和 `make grade`（20/20）不受影响。
+
+## RELY
+
+- `kern/mm/pmm.h`：`struct pmm_manager { const char *name; void (*init)(void); void (*init_memmap)(struct Page *base, size_t n); struct Page *(*alloc_pages)(size_t n); void (*free_pages)(struct Page *base, size_t n); size_t (*nr_free_pages)(void); void (*check)(void); };`；`page2ppn`、`page2pa`、`pa2page`、`alloc_pages`/`free_pages`（经 `pmm_manager` 转发）。
+- `kern/mm/memlayout.h`：`struct Page { int ref; uint64_t flags; unsigned int property; list_entry_t page_link; }`；`PG_reserved`（bit 0）、`PG_property`（bit 1）及 `Set/Clear/PageReserved`、`Set/Clear/PageProperty`；`le2page`；`free_area_t { list_entry_t free_list; unsigned int nr_free; }`。
+- `libs/list.h`：`list_init/list_add/list_add_before/list_add_after/list_del/list_empty/list_next/list_prev`。
+- `kern/debug/assert.h`：`assert`、`panic`；`stdio.h`：`cprintf`。
+- 调用约定（`pmm.c`）：`pmm_init()` → `init_pmm_manager()`（调用 `init()`）→ `page_init()` 调用**一次** `init_memmap(base, n)`，`base` 起的 `n` 页都是 `PG_reserved` 状态的连续页；默认 128MB 时 `n` 约为 0x7df9 页（不是 2 的幂，起点也不是 2 的大幂次对齐）→ `check_alloc_page()` 调用 `pmm_manager->check()`。
+- 参考实现：`default_pmm.c`、`best_fit_pmm.c`。
+- 编译选项含 `-Werror -Wall -O2`，`-Wno-unused`。
+
+## GUARANTEE
+
+- 新增 `buddy_pmm.h`、`buddy_pmm.c`；定义 `const struct pmm_manager buddy_pmm_manager`，6 个函数指针全部有实现（`check` 指向 `buddy_check`）。
+- 内部函数均为 `static`；只有 `buddy_pmm_manager` 和 `buddy_check` 对外可见。
+- 编译无警告。
+
+## SPECIFICATION
+
+### 内部状态
+- 每个 order（0..MAX_ORDER，MAX_ORDER 需覆盖 128MB 以内的块，写成宏）一条空闲链表和该 order 的空闲块数；总空闲页数 `nr_free`。
+- 空闲块只把块头页挂在链表上：块头 `PG_property` 置位，`property` 记录该块的 order；块内其它页 `PG_property` 清零。
+- 记录管理区域的起始 `Page *` 和页数，用于计算“相对下标”和伙伴地址；伙伴不能落到管理区域之外。
+
+### buddy_init
+- Postconditions：全部 order 链表为空，`nr_free == 0`，管理区域未设置。
+
+### buddy_init_memmap(base, n)
+- Preconditions：`n > 0`；`base[0..n-1]` 都是 `PG_reserved`；本管理器只会被调用一次（如被调用第二次，`panic` 并说明原因）。
+- Postconditions：每页 `flags`、`property` 清零，`ref = 0`；把 `[base, base+n)` 按“从低到高，每次取当前位置能放下的、相对下标对齐的最大 2 的幂块”切成若干块挂入对应 order 链表；`nr_free == n`。
+- Edge cases：`n` 不是 2 的幂时，尾部小块按同一规则切分，不得丢页也不得越界。
+
+### buddy_alloc_pages(n)
+- Preconditions：`n > 0`。
+- Case 1：`n > nr_free` 或需要的 order 超过 MAX_ORDER，或所有 ≥ k 的链表都为空：返回 `NULL`，状态不变。
+- Case 2：找到 order j ≥ k 的块（取最小的非空 j；同一 order 取链表中地址最低的块）：从链表摘下；当 j > k 时逐级拆分，每次把高地址的一半作为 order j-1 的空闲块挂回；返回块头。返回块头 `ClearPageProperty`，并在块头记录本次分配的 order（释放时需要），`nr_free -= 2^k`。
+- Requirements：分配出去的块页数是 2^k ≥ n，多出的 2^k − n 页属于内部碎片，**随整块一起释放**。
+
+### buddy_free_pages(base, n)
+- Preconditions：`n > 0`；`base` 是之前 `buddy_alloc_pages(n')` 返回的块头，且 `n` 向上取整到 2 的幂后与分配时的 order 相同（不一致时 `assert` 失败）。
+- Postconditions：整块（2^k 页）每页 `flags` 清零、`ref = 0`；然后循环：计算伙伴下标 `idx ^ (1 << k)`，若伙伴在区域内、是空闲块头（`PG_property`）且 order == k，就把伙伴从链表摘下、清除其块头标记，合并为 order k+1（块头取两者中下标较小者），k++；否则停止。最后把块头挂入 order k 链表，`nr_free += 2^(原 k)`。
+- Edge cases：k == MAX_ORDER 时不再合并；伙伴超出区域时不合并。
+
+### buddy_nr_free_pages
+- 返回 `nr_free`。
+````
+
+---
+
+<a id="task10"></a>
+
+## 六、功能模块二·任务三：Buddy System 测试提示词（第二份）
+
+对应过程记录：[task_10.md](ai_logs/lab2/task_10.md)
+
+````markdown
+## PROMPT
+
+任务：针对已实现的 Buddy System 分配器（`code/kern/mm/buddy_pmm.c`），设计并实现测试函数 `void buddy_check(void)`。测试要能检验 Buddy 的核心行为和边界情况，失败时用 `assert` 让内核 panic（panic 信息里有文件和行号），全部通过时打印 `buddy_check() succeeded!`。
+
+操作要求：
+1. 只修改 `code/kern/mm/buddy_pmm.c` 中 `buddy_check` 的实现，可以在它前面添加只供测试使用的 `static` 辅助函数（例如不变量检查函数）。**不得修改**已有的分配器函数和 `buddy_pmm_manager`。
+2. 测试运行方式：`make DEFS=-DLAB2_PMM_BUDDY` 编译后，内核把 Buddy 作为系统物理内存管理器，`page_init` 把初始空闲页一次交给 `buddy_init_memmap`，然后 `check_alloc_page()` 调用 `buddy_check()`。测试就在这个真实初始状态上运行，**结束时必须把分配器恢复到开始时的状态**（每个 order 的空闲块数、`nr_free` 都和开始时相同）。
+
+## RELY
+
+- Buddy 分配器实现（`buddy_pmm.c`）：`MAX_ORDER 15`；`free_areas[order].free_list`（按地址升序）与 `.nr_blocks`；`region_base`、`region_pages`、`nr_free`；空闲块头 `PG_property` 置位、`property` = order；已分配块头 `PG_property` 清零、`property` = 分配 order；块的对齐以 `region_base` 为基准（相对下标是 2^order 的倍数）；`buddy_alloc_pages(n)` 把 n 向上取整到 2^k，取最小的非空 order、同 order 取最低地址，拆分时高地址一半挂回；`buddy_free_pages(base, n)` 要求 n 向上取整后的 order 与分配时一致，按 `idx ^ (1 << k)` 找伙伴并逐级合并。
+- 测试可以直接调用 `buddy_pmm_manager.alloc_pages/free_pages/nr_free_pages`，也可以访问本文件内的静态变量做白盒检查。
+- `assert`（`kern/debug/assert.h`）、`cprintf`、`page2pa`、`le2page`、`list_next`。
+
+## GUARANTEE
+
+- `buddy_check()` 覆盖下面 SPECIFICATION 列出的全部行为，通过时打印 `buddy_check() succeeded!`。
+- 测试结束后分配器状态与开始时完全一致。
+- 不修改分配器本身；编译无警告（`-Werror`）。
+
+## SPECIFICATION
+
+测试包含以下 8 组，每组前用 `cprintf` 打印一行组名，便于从输出定位：
+
+1. **不变量检查函数**（每组之后都调用）：遍历每个 order 的链表——每个节点 `PageProperty` 为真、`property == order`、相对下标按 2^order 对齐、块不越出区域、链表按地址严格升序；各 order 链表长度等于 `nr_blocks`；Σ(nr_blocks × 2^order) == `nr_free`；不同空闲块互不重叠。
+2. **初始状态**：`nr_free == region_pages`（刚初始化、未分配时），并调用不变量检查。
+3. **向上取整与内部碎片**：`alloc(3)` 使 `nr_free` 减少 4；`alloc(1)`、`alloc(5)`、`alloc(8)` 分别减少 1、8、8；返回的块头相对下标按对应 order 对齐；几个块互不重叠；释放后 `nr_free` 恢复。
+4. **借块隔离与逐级拆分**：先把较小 order 的空闲块借走（分配出来暂存，之后归还），仅保留最大块作为隔离区；然后分配 1 页小块，检查从大块拆出的每一级都恰好多出一个空闲块、且多出的块正是返回块的伙伴（下标 = 返回块下标 ^ 2^j）。
+5. **伙伴合并**：分配两块互为伙伴的 order k 块，先释放一块，检查它以 order k 留在链表上、没有合并；再释放另一块，检查二者合并成更高阶块，链表里不再有这两个 order k 块头。
+6. **非伙伴不合并**：两个相邻但不是伙伴的同 order 块（例如相对下标 1 和 2）都空闲时不得合并。
+7. **失败路径**：`alloc(nr_free + 1)` 返回 `NULL` 且状态不变；`alloc((1 << MAX_ORDER) + 1)` 返回 `NULL`；借走所有空闲块后 `alloc(1)` 返回 `NULL`。
+8. **恢复初态**：归还所有借走的块后，各 order 的 `nr_blocks` 与 `nr_free` 和测试开始时的快照完全一致。
+````
+
+---
+
+<a id="task11"></a>
+
+## 七、功能模块二·任务四：SLUB 分配器实现提示词（第一份）
+
+对应过程记录：[task_11.md](ai_logs/lab2/task_11.md)
+
+````markdown
+## PROMPT
+
+任务：在没有现成代码框架的情况下，从零实现一个简化的 **SLUB 两层内存分配器**并接入现有内核：
+- 第一层：按页分配。直接使用内核已有的 `alloc_pages(n)` / `free_pages(base, n)`（当前系统物理内存管理器是 Best-Fit），不要自己再管理物理页。
+- 第二层：在第一层之上按任意字节大小分配。对外提供 `void *kmalloc(size_t size)` 和 `void kfree(void *ptr)`。小对象按大小分级（size class），每一级是一个 cache；每个 cache 由若干 slab 组成，**一个 slab 就是第一层分出来的 1 个物理页**，页内切成等大的对象；空闲对象用“对象内嵌的空闲指针”串成该 slab 的 freelist（SLUB 的做法：空闲时对象自身的前 8 字节存下一个空闲对象地址）。大对象（超过最大 size class）直接按页向第一层申请。
+
+操作要求：
+1. 必须直接修改实际文件。新建 `code/kern/mm/slub.h`、`code/kern/mm/slub.c`（`kern/mm/` 下的 `.c` 自动编译，不改 Makefile）。
+2. `slub.h` 声明：`void slub_init(void);`、`void *kmalloc(size_t size);`、`void kfree(void *ptr);`、`void slub_check(void);`。
+3. `slub_check` 测试函数由第二份提示词单独生成，本阶段先写最小占位实现。
+4. 接入方式：在 `pmm.c` 通过编译开关 `LAB2_SLUB_TEST` 接入——`make DEFS=-DLAB2_SLUB_TEST` 时，`pmm_init()` 在 `check_alloc_page()` 之后调用 `slub_init(); slub_check();`。默认编译不调用 SLUB。
+
+输出要求：`make DEFS=-DLAB2_SLUB_TEST` 编译无警告，运行无 panic；默认 `make grade` 仍 20/20。
+
+## RELY
+
+- `kern/mm/pmm.h`：`struct Page *alloc_pages(size_t n); void free_pages(struct Page *base, size_t n); size_t nr_free_pages(void);`；`page2pa(page)`；`pa2page(pa)`（越界 panic）；`PADDR(kva)`（`kva < KERNBASE` 时 panic，结果 `kva - va_pa_offset`）；`KADDR` 宏在 `pmm.h` 中被注释掉了，**不可用**，内核虚拟地址用 `(void *)(page2pa(page) + va_pa_offset)` 计算；`extern uint64_t va_pa_offset;`。
+- 内核通过启动页表把 `0xffffffffc0000000` 起 1GB 映射到物理 `0x80000000` 起，因此任意已分配物理页都可以经 `pa + va_pa_offset` 访问。
+- `kern/mm/memlayout.h`：`struct Page { int ref; uint64_t flags; unsigned int property; list_entry_t page_link; }`。**`Page` 的 `flags`、`property`、`page_link` 由物理内存管理器使用**（Buddy 会在已分配块头的 `property` 里存 order），所以 SLUB 不要在 `struct Page` 里存自己的数据；需要的元数据放在 slab 页内部（页头）。
+- `kern/mm/mmu.h`：`PGSIZE 4096`；`libs/defs.h`：`ROUNDUP`、`ROUNDDOWN`、`size_t`、`uintptr_t`；`libs/list.h` 双向链表；`libs/string.h`：`memset`、`memcpy`；`kern/debug/assert.h`：`assert`、`panic`；`stdio.h`：`cprintf`。
+- 编译选项 `-Werror -Wall -O2 -fno-builtin -nostdinc`（不能用标准库 `malloc` 等）。
+
+## GUARANTEE
+
+- 新增 `slub.h`、`slub.c`；对外只暴露 `slub_init`、`kmalloc`、`kfree`、`slub_check`，其余为 `static`。
+- 所有页都经 `alloc_pages` / `free_pages` 获得和归还；空 slab 必须归还给第一层（不要无限缓存空页）。
+- 不在 `struct Page` 中存储 SLUB 数据；编译无警告。
+
+## SPECIFICATION
+
+### 数据结构
+- size class：8、16、32、64、128、256、512、1024、2048 字节（写成数组）。每个 cache 记录对象大小、每个 slab 的对象数、slab 链表（区分有空闲对象的 partial 链表；full 的不挂链表）。
+- slab 页内布局：页起始处放 slab 头（所属 cache 指针、空闲对象数、freelist 头、链表节点、用于校验的 magic），对象从页头之后按对象大小对齐（至少 8 字节对齐）排列。对象数 = `(PGSIZE − object_offset) / object_size`。
+- 大对象：`size` 超过最大 size class 时，向第一层申请 `ROUNDUP(size + 大对象页头, PGSIZE) / PGSIZE` 页，页头记录 magic 和页数，返回页头之后的地址。
+
+### slub_init
+- Postconditions：所有 cache 的链表为空、统计清零。
+
+### kmalloc(size)
+- Case 1：`size == 0`：返回 `NULL`。
+- Case 2：小对象：选最小的 ≥ size 的 size class；该 cache 的 partial 链表有 slab 就从其 freelist 取一个对象；没有就 `alloc_pages(1)` 新建 slab（初始化页头和 freelist，所有对象入 freelist）；slab 用完时移出 partial 链表。返回对象地址（内核虚拟地址，8 字节对齐）。
+- Case 3：大对象：按上面的大对象规则 `alloc_pages(npages)`。
+- Case 4：第一层分配失败（`alloc_pages` 返回 `NULL`）：返回 `NULL`，不改变已有状态。
+
+### kfree(ptr)
+- Case 1：`ptr == NULL`：直接返回。
+- Case 2：由 `ROUNDDOWN(ptr, PGSIZE)` 找到页头，校验 magic（不对就 `panic`，打印地址）；是 slab 页：把对象放回该 slab 的 freelist（检查 ptr 正好是某个对象的起始地址，否则 `panic`）；若 slab 之前是 full，重新挂回 partial；若 slab 全部空闲，从链表摘下并 `free_pages` 归还这 1 页。
+- Case 3：是大对象页：`free_pages(该页对应的 Page, 记录的页数)`。
+- Requirements：从内核虚拟地址求 `struct Page *` 用 `pa2page(PADDR(kva))`。
+````
+
+---
+
+<a id="task12"></a>
+
+## 八、功能模块二·任务四：SLUB 分配器测试提示词（第二份）
+
+对应过程记录：[task_12.md](ai_logs/lab2/task_12.md)
+
+````markdown
+## PROMPT
+
+任务：针对已实现的 SLUB 两层分配器（`code/kern/mm/slub.c`，对外接口 `slub_init`、`kmalloc`、`kfree`），设计并实现测试函数 `void slub_check(void)`，检验不同大小内存对象的分配和释放是否正确。失败时用 `assert` 让内核 panic；全部通过时打印 `slub_check() succeeded!`。
+
+操作要求：
+1. 只修改 `code/kern/mm/slub.c` 中 `slub_check` 的实现，可在它前面添加只供测试使用的 `static` 辅助函数。**不得修改**已有的分配器代码。
+2. 运行方式：`make DEFS=-DLAB2_SLUB_TEST` 时，`pmm_init()` 在 `check_alloc_page()` 之后调用 `slub_init(); slub_check();`，第一层是 Best-Fit。测试结束时必须把所有对象和页归还：`nr_free_pages()` 回到测试开始时的值，各 cache 的统计回到 0。
+
+## RELY
+
+- SLUB 实现（`slub.c`）：size class `8,16,32,64,128,256,512,1024,2048`（`size_classes[]`、`NR_CACHES`）；`struct slub_cache { object_size, object_offset, objects_per_slab, partial, nr_slabs, nr_inuse }`；`struct slab_header { magic(SLAB_MAGIC), cache, nr_free, freelist, link }` 位于 slab 页起始处，对象从 `object_offset`（= 页头大小按对象大小向上取整）开始；空闲对象前 8 字节存下一个空闲对象地址；`kmalloc` 选最小的 ≥ size 的 class，从 partial 链表第一个 slab 的 freelist 头部取对象（LIFO），slab 用满时摘出 partial；`kfree` 由 `ROUNDDOWN(ptr, PGSIZE)` 找页头并校验 magic，slab 全空时立刻 `free_pages` 归还 1 页；大对象（> 2048）按 `ROUNDUP(size + sizeof(struct large_header), PGSIZE) / PGSIZE` 页向第一层申请，页头 `{magic(LARGE_MAGIC), npages}`，返回页头之后的地址；`live_objects` 计数全部未释放对象；`kmalloc(0)` 返回 NULL，`kfree(NULL)` 直接返回。
+- 第一层接口：`nr_free_pages()`、`alloc_pages`、`free_pages`（`pmm.h`）；`PGSIZE`；`memset`（`string.h`）；`assert`、`cprintf`。
+
+## GUARANTEE
+
+- `slub_check()` 覆盖下面列出的全部 9 组行为，通过时打印 `slub_check() succeeded!`。
+- 测试结束后所有对象、页都已归还，`nr_free_pages()` 与开始时相同；不修改分配器本身；编译无警告。
+
+## SPECIFICATION
+
+每组前用 `cprintf` 打印组名，包含以下 9 组测试：
+
+1. **边界输入**：`kmalloc(0) == NULL`；`kfree(NULL)` 不改变任何状态。
+2. **size class 选择与对齐**：对 1、8、9、16、17、31、32、33、64、100、128、200、256、300、512、700、1024、1500、2048 字节各分配一次：返回非空、8 字节对齐、所在页页头 magic 正确、`cache->object_size` 恰好是“≥ size 的最小 class”、对象地址减去页起始位于 `[object_offset, PGSIZE)` 且 `(addr - 页起始 - object_offset) % object_size == 0`。
+3. **数据不重叠**：保持上一组全部对象不释放，按各自申请的字节数填入互不相同的字节模式，然后逐个读回校验（能发现对象重叠、freelist 指针写进了在用对象、对象越界）。
+4. **slab 扩展**：对某一 class 连续分配 `objects_per_slab + 1` 个对象：`nr_slabs` 增加 2，且最后一个对象和第一个对象不在同一页；第一个 slab 用满后不在 partial 链表上。
+5. **复用（LIFO）**：释放一个对象后立刻再分配同一 class，应得到同一地址。
+6. **空 slab 归还**：记录 `nr_free_pages()`，把第 4 组的对象全部释放后，该 class 的 `nr_slabs`、`nr_inuse` 回到原值，`nr_free_pages()` 恢复（证明空 slab 的页已还给第一层）。
+7. **大对象**：`kmalloc(2049)`、`kmalloc(PGSIZE - 16)`、`kmalloc(PGSIZE)`、`kmalloc(3 * PGSIZE + 1)`：`nr_free_pages()` 的减少量分别等于按公式算出的页数；整块写满模式再读回；释放后 `nr_free_pages()` 恢复。
+8. **交错压力**：用确定性的伪随机序列（线性同余，固定种子）在数组里做 512 次随机大小（1～3000 字节）的分配/释放交错，每个在用对象写入与其编号相关的模式，每次释放前校验模式；结束时全部释放，`live_objects == 0`，每个 cache `nr_inuse == 0 && nr_slabs == 0`，`nr_free_pages()` 回到测试开始时的值。
+9. **失败路径**：`kmalloc((size_t)-1)` 返回 NULL；`kmalloc((nr_free_pages() + 1) * PGSIZE)` 返回 NULL；两者都不改变 `nr_free_pages()` 和 `live_objects`。
+````
+
+---
 
 <a id="task05"></a>
 
-## Task 05：分支任务源码分析与调试方案
+## 九、分支任务：QEMU 页表翻译源码分析与 GDB 调试方案提示词
 
-发送对象：Codex，Analysis Agent；对应 [task_05.md](ai_logs/lab2/task_05.md)，具体发送时分未记录。
+对应过程记录：[task_05.md](ai_logs/lab2/task_05.md)、[task_07.md](ai_logs/lab2/task_07.md)
 
 ````markdown
 ## PROMPT
 
-你是 OS Lab2 分支任务的 Analysis Agent。目标：为“用 gdb 调试正在运行 ucore 的 QEMU，观察一次访存的虚拟地址如何被翻译成物理地址”准备**源码分析和可直接执行的调试方案**。你不能运行 Docker / QEMU / gdb，只做静态源码阅读；Leader 会按你的方案在容器里实际调试，并把真实输出反馈给你。
+目标：为“用 gdb 调试正在运行 ucore 的 QEMU，观察一次访存的虚拟地址如何被翻译成物理地址”完成 QEMU 4.1.1 源码分析与双 GDB 调试方案设计。
 
 任务：
-1. 阅读 QEMU 4.1.1 源码副本 `/Users/wesley/大三上课程/操作系统/tmp/qemu-src/`（从容器 `/opt/qemu-src/qemu-4.1.1` 原样拷出，含 `target/riscv`、`accel/tcg`、`include/exec`、`exec.c`、`memory.c`），给出 RISC-V 64 位客户机一次**数据 load**（例如 `ld`）从 TCG 生成的 helper 到得到物理地址、再到访问客户机内存的**完整调用路径**（函数名 + 文件:行号），以及路径上的关键分支（TLB 命中/未命中、victim TLB、`tlb_fill` 失败抛异常、MMU 模式判断、页表项有效性/权限/叶子判断、大页、A/D 位处理等）。
+1. 阅读 QEMU 4.1.1 源码（含 `target/riscv`、`accel/tcg`、`include/exec`、`exec.c`、`memory.c`），给出 RISC-V 64 位客户机一次**数据 load**（例如 `ld`）从 TCG 生成的 helper 到得到物理地址、再到访问客户机内存的**完整调用路径**（函数名 + 文件:行号），以及路径上的关键分支（TLB 命中/未命中、victim TLB、`tlb_fill` 失败抛异常、MMU 模式判断、页表项有效性/权限/叶子判断、大页、A/D 位处理等）。
 2. 详细解释 `target/riscv/cpu_helper.c` 中 `get_physical_address` 的 SV39 页表遍历：每一级如何从 VA 取索引、如何算 PTE 地址、如何读 PTE（读用的是哪个函数，读的是客户机物理地址）、什么条件下继续下一级、什么条件下是叶子、最后如何拼出物理地址。
-3. 找出模拟 CPU 查 TLB 的 C 代码（`accel/tcg/cputlb.c` 中 `load_helper` / `tlb_hit` / `victim_tlb_hit` / `tlb_set_page_with_attrs` 等，以实际源码为准），说明 TLB 的组织（`CPUTLBEntry` 里存了什么、按什么索引、`mmu_idx` 的作用、`addend` 是什么）。
-4. 分析 QEMU 软件 TLB 与真实 CPU TLB 的**逻辑区别**，并说明“未开启分页（satp 为 Bare 或 M 模式）时的访存”在 QEMU 里是否也走 TLB / `tlb_fill` / `get_physical_address`，哪个分支直接返回。结论必须有源码行号支撑；拿不准的写“待调试确认”。
-5. 设计调试方案，Leader 将在容器里执行：
-   - 终端 1：`./os2026.sh debug`（QEMU 带 `-s -S` 启动，等待 gdb）；终端 2：`./os2026.sh gdb-qemu`（gdb 附加到 QEMU 进程，已设 `handle SIGPIPE nostop noprint` 和 `set remotetimeout unlimited`）；终端 3：`./os2026.sh gdb`（riscv gdb 连 ucore）。Leader 也可能用 gdb 的批处理模式（`gdb -batch -x <script>`）自动化，所以请把终端 2 和终端 3 的命令各写成一个可直接 `source` 的 gdb 脚本。
-   - 选定观察目标：(a) 一条**开启分页之后**的内核访存，建议用 ucore 中一定会被访问的地址（例如某个全局变量，或 `kern_init` 入口取指），给出如何用 `riscv64-unknown-elf-objdump`/`nm` 找到它的虚拟地址；(b) 一条**开启分页之前**（`entry.S` 里写 satp 之前，或 OpenSBI 阶段）的访存，用于第 4 问对比。
-   - 条件断点：在 `get_physical_address`、`riscv_cpu_tlb_fill`、`load_helper`（或其被内联后的实际可下断点符号）上设置以地址为条件的断点；注意排除 gdb 读内存触发的调试访问（调用栈里有 `cpu_memory_rw_debug` 的那次），给出排除方法。
-   - 每个断点命中后要打印的变量（例如 `addr`、`mode`、`base`、`levels`、`ptesize`、`idx`、`pte_addr`、`pte`、`ppn`、`*physical`、`tlb_entry->addr_read`、`addend`），以及 `bt` 的预期样子。
-6. 列出你认为答辩时最值得演示的“主线”：从哪个断点开始、单步几次、看哪几个变量，能在 3 分钟内讲清一次翻译。
-
-操作要求：
-- 只读源码，**只允许新建**以下两个文件，不修改任何其它文件，不 git commit / push：
-  - `<lab2 日志目录>/evidence/t5_qemu_analysis.md`：第 1～4、6 项的分析（中文，引用源码时给 `文件:行号` 和短代码片段）；
-  - `<lab2 日志目录>/evidence/t5_gdb_qemu.gdb` 与 `t5_gdb_ucore.gdb`：第 5 项的两个 gdb 脚本，脚本里每条命令后用 `#` 注释说明用途。
-- 不确定的地方明确标“待调试确认”，不要把推测写成事实。
-- 完成后回复 ≤15 行：调用路径一行版、TLB 查找函数位置、两个观察目标地址的获取方法、你最不确定的 3 点。
+3. 找出模拟 CPU 查 TLB 的 C 代码（`accel/tcg/cputlb.c` 中 `load_helper` / `tlb_hit` / `victim_tlb_hit` / `tlb_set_page_with_attrs` 等），说明 TLB 的组织（`CPUTLBEntry` 里存了什么、按什么索引、`mmu_idx` 的作用、`addend` 是什么）。
+4. 分析 QEMU 软件 TLB 与真实 CPU TLB 的**逻辑区别**，并说明“未开启分页（satp 为 Bare 或 M 模式）时的访存”在 QEMU 里是否也走 TLB / `tlb_fill` / `get_physical_address`，哪个分支直接返回。
+5. 设计三终端调试方案：
+   - 终端 1：`./os2026.sh debug`（QEMU 带 `-s -S` 启动，等待 gdb）；终端 2：`./os2026.sh gdb-qemu`（gdb 附加到 QEMU 进程，设置 `handle SIGPIPE nostop noprint` 和 `set remotetimeout unlimited`）；终端 3：`./os2026.sh gdb`（riscv gdb 连 ucore）。
+   - 选定观察目标：(a) 一条**开启分页之后**的内核访存；(b) 一条**开启分页之前**（`entry.S` 里写 satp 之前）的访存，用于第 4 问对比。
+   - 条件断点：在 `get_physical_address`、`riscv_cpu_tlb_fill`、`load_helper` 上设置以地址为条件的断点；注意排除 gdb 读内存触发的调试访问（调用栈里有 `cpu_memory_rw_debug`）。
+   - 每个断点命中后要打印的变量（`addr`、`mode`、`base`、`levels`、`ptesize`、`idx`、`pte_addr`、`pte`、`ppn`、`*physical`、`tlb_entry->addr_read`、`addend`）以及 `bt`。
+6. 列出答辩时最值得演示的 3 分钟主线：从哪个断点开始、单步几次、看哪几个变量。
 
 ## RELY
 
-- QEMU 版本 4.1.1，以 `--enable-debug` 编译，`-machine virt`，OpenSBI v0.4（启动输出）。容器内源码 `/opt/qemu-src/qemu-4.1.1`，本地只读副本 `/Users/wesley/大三上课程/操作系统/tmp/qemu-src/`。
-- Leader 已在 2026-10-24 验证：gdb 能在 `get_physical_address`（`target/riscv/cpu_helper.c:158`）和 `riscv_cpu_tlb_fill`（同文件 `:438`）下断点命中；gdb 读客户机内存时也会走 `get_physical_address`，调用栈中有 `cpu_memory_rw_debug`。
-- ucore 侧（`code/`，已编译通过）：`kern/init/entry.S` 在 `kern_entry` 里构造 `satp`（Sv39，`boot_page_table_sv39`）后 `csrw satp`、`sfence.vma`，再跳到高地址的 `kern_init`；本次运行 `kern_init` 等符号在 `0xffffffffc02000xx` 一带（以 `nm bin/kernel` 为准）；`pmm_init` 打印 `satp physical address: 0x0000000080205000`。启动页表把 `0xffffffffc0000000` 起 1GB 映射到物理 `0x80000000`（1GB 大页）。
-- 指导书：`/Users/wesley/大三上课程/操作系统/实验指导书/lab2/lab2_4_qemu_mmu_debug.md`（6 个调试要求）。
-- 入口脚本：`/Users/wesley/大三上课程/操作系统/os2026.sh`（`debug` / `gdb-qemu` / `gdb` 子命令，读它确认实际命令）。
+- QEMU 版本 4.1.1，以 `--enable-debug` 编译，`-machine virt`，OpenSBI v0.4。容器内源码位于 `/opt/qemu-src/qemu-4.1.1`。
+- `get_physical_address`（`target/riscv/cpu_helper.c:158`）和 `riscv_cpu_tlb_fill`（同文件 `:438`）可直接下断点；gdb 读客户机内存时也会走 `get_physical_address`，调用栈中有 `cpu_memory_rw_debug`。
+- ucore 侧（`code/`）：`kern/init/entry.S` 在 `kern_entry` 里构造 `satp`（Sv39，`boot_page_table_sv39`）后 `csrw satp`、`sfence.vma`，再跳到高地址的 `kern_init`；启动页表把 `0xffffffffc0000000` 起 1GB 映射到物理 `0x80000000`（1GB 大页）。
+- 指导书：`实验指导书/lab2/lab2_4_qemu_mmu_debug.md`（6 个调试要求）。
 
 ## GUARANTEE
 
-- 两个 gdb 脚本只包含 gdb 命令和注释，Leader 可直接 `source`。
-- 分析中的每个结论都附源码 `文件:行号`；推测标“待调试确认”。
-- 不修改任何已有文件。
+- 生成可直接 `source` 的宿主侧与客户机侧 GDB 调试脚本。
+- 分析中的每个结论均附 QEMU 源码 `文件:行号`。
 
 ## SPECIFICATION
 
-- Preconditions：P0（page_init、Best-Fit）已完成并编译通过；QEMU 源码副本存在。
-- Postconditions：上述 3 个文件存在、非空；回复包含 6 项要求的摘要。
+- Preconditions：P0（`page_init`、Best-Fit）已完成并编译通过；QEMU 4.1.1 调试版与源码就绪。
+- Postconditions：输出源码分析文档与 GDB 脚本，覆盖指导书全部 6 个调试问题。
 - Edge cases：
-  - 若某函数在 `--enable-debug`（-O0）下仍被宏展开或内联、无法直接下断点，给出可替代的断点位置（文件:行号）。
-  - 若 4.1.1 中 TLB 查找代码与上面列的函数名不同，以实际源码为准并说明。
-  - 1GB 大页（Sv39 第一级就是叶子）会让页表遍历只走一级，请说明这对观察有什么影响，并建议是否另找一个经过多级页表的地址（若 ucore 本实验中不存在多级映射，如实说明）。
-
-````
-
-<a id="task07"></a>
-
-## Task 07：Leader 实际调试
-
-Task 07 由 Leader（Claude Code）自己执行，没有发给子 Agent 的提示词；仅记录实际做法与证据，见 [task_07.md](ai_logs/lab2/task_07.md)。
-
-<a id="task08"></a>
-
-## Task 08：分支任务报告与演示稿
-
-发送对象：Codex，Report Agent；对应 [task_08.md](ai_logs/lab2/task_08.md)，具体发送时分未记录。
-
-````markdown
-## PROMPT
-
-你是 OS Lab2 的 Report Agent。仓库 `/Users/wesley/大三上课程/操作系统/os2026-labs`，分支 `lab2`。用户是初学者，答辩时要现场演示并回答助教问题，而且不能借助大模型作答。
-
-任务：
-1. 在 `report/report.md` 的“分支任务：gdb 调试页表查询过程”一节，替换全部 TODO，写完：
-   - “调试环境”：三个终端各做什么、启动顺序（`./os2026.sh debug` → `./os2026.sh gdb-qemu` 设断点后 `continue` → `./os2026.sh gdb`）；调试版 QEMU 从哪来（镜像 `os2026-dbg` 内 `--enable-debug` 编译的 QEMU 4.1.1，源码在容器 `/opt/qemu-src/qemu-4.1.1`，因此不需要指导书里“重新编译、改 Makefile 的 QEMU 路径、sudo gdb”这几步）；报告里的数据是 Leader 用批处理脚本（`ai_logs/lab2/evidence/t7_scripts/`）在同一个容器里自动跑三终端得到的，交互式命令与脚本相同。
-   - 第 1～6 问逐一回答。事实只能来自 `ai_logs/lab2/task_05.md`、`task_07.md`、`evidence/t5_qemu_analysis.md`、`evidence/t7_*.txt`、`evidence/t7_leader_notes.md` 和你实际读到的源码（`/Users/wesley/大三上课程/操作系统/tmp/qemu-src/`）。每个关键结论给出 `文件:行号` 和对应的实测输出（短引用，代码块）。要求：
-     - 第 1 问：给出一行版调用路径 + 每一环的作用 + 关键分支（TLB 命中/未命中/victim、Bare/M 直接返回、V 位、叶子判断、权限、A/D），并用 Task 07 第一轮 [A]～[F] 演示 VA `0xffffffffc0207008` → PA `0x80207008` → 宿主指针的全过程。
-     - 第 2 问：单步讲解 Sv39 遍历，用实测数值算一遍（`satp` → 根页表 `0x80205000` → `idx=511` → `pte_addr=0x80205ff8` → `pte=0x200000cf` → 叶子 → `ppn` → 拼接）；说明本实验启动页表是 1GB 大页，所以只走一层，若是 4KB 页会走三层（按源码说明循环如何继续，不要编造三层的实测数据）。
-     - 第 3 问：C 语言 TLB 查找在 `load_helper`/`store_helper`（`cputlb.c:1271`、`:1519`）、`tlb_hit`、`victim_tlb_hit`；`CPUTLBEntry` 存什么、怎么索引、`mmu_idx`、`addend`；用实测 [H]（`addr_write=0xffffffffffffffff` 空表项 → 未命中 → victim → fill）和 [G]（同页后续访问在生成代码快速路径命中、不进 C helper）说明。
-     - 第 4 问：逻辑区别至少包括——QEMU 软件 TLB 缓存的是“客户机虚拟页 → 宿主内存指针（addend）”，真实 TLB 缓存“虚拟页 → 物理页 + 权限”；QEMU 在 Bare 模式下也把访存装进软件 TLB（实测 [I][J]：`case VM_1_10_MBARE` 直接 `*physical = addr`，仍 `tlb_set_page`），真实 CPU 在 Bare 模式下不做地址翻译；QEMU 的 TLB 按 `mmu_idx`（特权级）分组、大小和替换策略是软件选择；以及 [K] 写 satp 后旧表项仍然命中（`csr.c:746` 只在 ASID 变化时 flush）。真实 CPU 的部分只写规范/教材层面的说法，并标明未实测。
-     - 第 5 问：有趣细节，至少写：写 satp 之后低地址取指为什么没有缺页（[K] + `t7_leader_notes.md` 第 2 节，QEMU 8.2.2 部分标“推测，未核对源码”）；`-d in_asm` 日志里 0x80200038 那个 TB 被反汇编成一串 `sw a2,96(s0)`（原因待确认，如实写）；1GB 大页在软件 TLB 里只装 4KB；`get_physical_address` 返回页基址不含页内偏移；gdb 读内存也会触发 `get_physical_address`（`cpu_memory_rw_debug`），所以断点要加条件。
-     - 第 6 问：只记录真实发生的大模型交互：Leader（Claude Code）把源码分析任务交给 Codex（Task 05 原文在 `prompt.md`）、Codex 给出的哪些预测被实测证实；satp 疑问的情景、思路（先看 `-d in_asm` 的 TB 边界，再读 `write_satp`，再用 gdb 在 `get_page_addr_code` 验证）；子 Agent 无法访问 Docker 后的分工调整。不要编造用户本人与大模型的对话。
-   - 同时修订两处（Leader 审读意见，见 `task_06.md` Verification）：① “二、实验环境”里“工具与环境信息依据 Task 06”这句改为引用启动输出（`evidence/t3_qemu.txt`）和 `/Users/wesley/大三上课程/操作系统/环境配置状态.md`；② 该节对 QEMU 8.2.2 的说明后面补一句指向分支任务第 5 问的解释（4.1.1 能跑是因为旧 TLB 表项，8.2.2 的部分仍为推测）。
-   - “五、测试与验证”里“Buddy、SLUB 与分支任务”小节：分支任务部分写明用到的脚本和 evidence 文件；Buddy、SLUB 保留 TODO。
-2. 新建 `report/ai_logs/lab2/分支任务演示步骤.md`：给用户自己答辩用的 3 分钟演示稿。内容：三个终端逐条要敲的命令（交互式，不是批处理）；在终端 2 设的条件断点（排除 `cpu_memory_rw_debug` 的办法）；每停一次要 `print` 什么、看到什么数值、该怎么讲一句话；可能遇到的问题（`Ignoring packet error` → `set remotetimeout unlimited`、容器名冲突 `docker rm -f os`、断点不命中时怎么办）；最后列 8～10 个助教可能问的问题和简短答案要点（只用本报告里有依据的内容）。
-3. `report/prompt.md`：在末尾追加 Task 05、Task 07（说明 Task 07 是 Leader 自己执行、没有发给子 Agent 的提示词，只附一行说明，不要编造提示词）和 Task 08 的四段式提示词原文（从 `task_05.md`、`task_08.md` 的 `## PROMPT` 到 `## SPECIFICATION` 末尾逐字复制），格式与前面小节一致。
-
-操作要求：
-- 只修改 `report/report.md`、`report/prompt.md`，新建 `report/ai_logs/lab2/分支任务演示步骤.md`；不改代码、不改其它日志文件，不 git commit / push。
-- 不运行 Docker / QEMU / gdb（你的沙箱也用不了）。
-- 中文、短句、术语第一次出现时一句话解释；推测必须标“推测”或“待确认”。
-- 完成后回复 ≤10 行。
-
-## RELY
-
-- 实测证据：`evidence/t7_paged_qemu_gdb.txt`（第一轮 [A]～[G]）、`evidence/t7_bare_qemu_gdb.txt`（第二轮 [H]～[K]）、`evidence/t7_tracer_qemu_gdb.txt`、`evidence/t7_inasm_kern_entry.txt`、`evidence/t7_leader_notes.md`、`task_07.md`。
-- 源码分析：`evidence/t5_qemu_analysis.md`；源码副本 `/Users/wesley/大三上课程/操作系统/tmp/qemu-src/`。
-- 指导书：`/Users/wesley/大三上课程/操作系统/实验指导书/lab2/lab2_4_qemu_mmu_debug.md`。
-- 助教 2026-10-23 01:33 通知：答辩时只需简单演示讲解关键部分，更多调试细节放在报告中；遇到 `Ignoring packet error` 用 `set remotetimeout unlimited`。
-- 入口脚本：`/Users/wesley/大三上课程/操作系统/os2026.sh`。
-
-## GUARANTEE
-
-- 分支任务一节 6 问全部回答，没有 TODO；每个实测数值都能在 evidence 里找到。
-- 演示步骤文件可照着逐条执行。
-- `prompt.md` 新增内容与 `task_05.md`、`task_08.md` 逐字一致。
-
-## SPECIFICATION
-
-- Preconditions：Task 05、07 已完成，evidence 齐全；`report.md` 已有 P0 部分（Task 06）。
-- Postconditions：`git diff --stat` 只显示 `report/report.md`、`report/prompt.md` 和新文件。
-- Edge cases：evidence 与分析文件说法冲突时以 evidence 为准并在回复中指出；没有依据的内容写“待确认”，不要补全。
-
+  - 若某函数被内联无法直接按函数名下断点，给出对应的源码行号断点位置。
+  - 说明 1GB 大页（Sv39 根页表项即为叶子）对页表遍历层数的影响，并对比 4KB 标准三层页表的遍历分支。
 ````

@@ -16,3 +16,10 @@
 - 修复：Task 04 在 spec 中新增 Case 5（写描述符之前检查 `PADDR(&pages[npage - nbase]) > mem_end`，成立则 panic），由 Debug Agent 修改 `page_init`。
 - 修复后验证：128MB 运行与 `make grade` 20/20 通过（`evidence/t4_qemu.txt`、`t4_grade.txt`）；越界分支因 OpenSBI 0.4 需要至少约 34MB 内存才能启动，无法在 QEMU 中复现，只经静态审查。
 - 教训：spec 的边界分支要从“每一步用到的内存是否在范围内”去枚举，而不只是看最终结果；测试全绿不代表 spec 完整。
+
+## 问题 3：Leader 的验证记录与原始日志不一致（记录错误，Report Agent 发现）
+
+- 现象：Task 08 Verification 写“全部命令无报错”，但 `evidence/t8_demo_validation_ucore_gdb.txt` 末尾有 `Cannot execute this command while the target is running`。Task 14 的 Report Agent 对照原始日志时指出。
+- 原因：Leader 只检查了 QEMU 侧日志就写了概括，没有逐行看 ucore 侧日志。
+- 处理：加标记重跑（`evidence/t8_marker_ucore_gdb.txt`），确认该提示是 gdb 批处理模式在 `continue` 之后产生的，`continue` 已生效、内核完整运行；更正 Task 08、report.md、final_summary.md 中的表述，保留原始日志不改。gdb 内部成因待确认。
+- 教训：Verification 的每一句概括都要能对应到原始输出的具体行；让另一个 Agent 对照原始日志复核报告是有效的。

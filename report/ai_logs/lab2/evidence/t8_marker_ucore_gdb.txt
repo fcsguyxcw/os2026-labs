@@ -1,0 +1,6 @@
+The target architecture is set to "riscv:rv64".
+0x0000000000001000 in ?? ()
+MARK-before-continue
+Cannot execute this command while the target is running.
+Use the "interrupt" command to stop the target
+and then try again.

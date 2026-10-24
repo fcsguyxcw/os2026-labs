@@ -19,7 +19,8 @@ Leader：Claude Code（Claude Opus 5.5）。子 Agent 通过 Herdr 终端复用�
 | [11](task_11.md) | Codex w1:p3 | SLUB 实现（第一份 prompt） | DONE |
 | [12](task_12.md) | Codex w1:p2 | SLUB 测试（第二份 prompt） | DONE；9 组通过，3 个变异全部检出 |
 | [13](task_13.md) | Codex w1:p3 | 报告 Buddy 一节 | DONE |
-| [14](task_14.md) | Codex w1:p3 | 报告收尾：SLUB、知识点、总结、final_summary | 进行中 |
+| [14](task_14.md) | Codex w1:p3 | 报告收尾：SLUB、知识点、总结、final_summary | DONE（指出 Task 08 记录不一致，已更正） |
+| [15](task_15.md) | Codex w1:p2 | 全文独立核对 | PASS，2 条 NOTE 已采纳 |
 
 ## 调度消息原文
 
@@ -28,7 +29,7 @@ Leader：Claude Code（Claude Opus 5.5）。子 Agent 通过 Herdr 终端复用�
 - 2026-10-24 → w1:p2、w1:p3（Task 03）：「你是 OS Lab2 的 Review Agent。请阅读 …/task_03.md 的 PROMPT/RELY/GUARANTEE/SPECIFICATION 并执行。你负责审查 Best-Fit（或 page_init）…，结果写入 …/evidence/t3_review_<对象>.md。只读审查，不改源码。」
 - 2026-10-24 → w1:p2（Task 04）：「你是 OS Lab2 的 Debug Agent。请阅读 …/task_04.md 的 PROMPT/RELY/GUARANTEE/SPECIFICATION 并执行。不要尝试 Docker，不要改 page_init 以外的代码。」
 
-Bug 记录见 [bugs.md](bugs.md)，原始输出见 `evidence/`。
+Bug 记录见 [bugs.md](bugs.md)，原始输出见 `evidence/`，最终状态见 [final_summary.md](final_summary.md)。
 - 2026-10-24 → 其余任务（Task 05、06、08～13）的调度消息格式相同：「你是 OS Lab2 的 <角色> Agent。请阅读 …/task_0X.md 的 PROMPT/RELY/GUARANTEE/SPECIFICATION 并执行。<只改哪些文件 / 不要尝试 Docker / 上一步 Leader 的验证结果>」。完整内容以各 task 文件为准。
 
 ## 编译开关（扩展任务）

@@ -1,0 +1,3 @@
+check_alloc_page() succeeded!
+satp virtual address: 0xffffffffc0205000
+satp physical address: 0x0000000080205000
