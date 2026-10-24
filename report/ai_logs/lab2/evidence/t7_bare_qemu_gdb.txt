@@ -1,0 +1,71 @@
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib/aarch64-linux-gnu/libthread_db.so.1".
+0x0000ffffbdca1188 in __GI_ppoll (fds=0xaaaafe6628e0, nfds=6, timeout=<optimized out>, sigmask=0x0) at ../sysdeps/unix/sysv/linux/ppoll.c:42
+
+warning: 42	../sysdeps/unix/sysv/linux/ppoll.c: No such file or directory
+Breakpoint 1 at 0xaaaad00eee80: accel/tcg/cputlb.c:1519. (7 locations)
+[Switching to Thread 0xffffbca6dd40 (LWP 14)]
+
+Thread 2 "qemu-system-ris" hit Breakpoint 1.6, store_helper (big_endian=false, size=8, retaddr=281473735520900, oi=49, val=0, addr=2149605376, env=0xaaaafe61eeb0) at /opt/qemu-src/qemu-4.1.1/accel/tcg/cputlb.c:1519
+1519	    if (!tlb_hit(tlb_addr, addr)) {
+
+===== [H] store_helper 查 TLB =====
+#0  store_helper (big_endian=false, size=8, retaddr=281473735520900, oi=49, val=0, addr=2149605376, env=0xaaaafe61eeb0) at /opt/qemu-src/qemu-4.1.1/accel/tcg/cputlb.c:1519
+#1  helper_le_stq_mmu (env=0xaaaafe61eeb0, addr=2149605376, val=0, oi=49, retaddr=281473735520900) at /opt/qemu-src/qemu-4.1.1/accel/tcg/cputlb.c:1672
+#2  0x0000ffffb604f330 in code_gen_buffer ()
+addr=0x80206000 mmu_idx=1 index=6 tlb_addr(addr_write)=0xffffffffffffffff 页=0x80206000 -> 未命中
+satp=0x0 priv=1
+1520	        if (!victim_tlb_hit(env, mmu_idx, index, tlb_off,
+[H] next 后：
+#0  store_helper (big_endian=false, size=8, retaddr=281473735520900, oi=49, val=0, addr=2149605376, env=0xaaaafe61eeb0) at /opt/qemu-src/qemu-4.1.1/accel/tcg/cputlb.c:1520
+1520	        if (!victim_tlb_hit(env, mmu_idx, index, tlb_off,
+Breakpoint 2 at 0xaaaad01ae8c4: file /opt/qemu-src/qemu-4.1.1/target/riscv/cpu_helper.c, line 158.
+
+Thread 2 "qemu-system-ris" hit Breakpoint 2, get_physical_address (env=0xaaaafe61eeb0, physical=0xffffbca6cb80, prot=0xffffbca6cb74, addr=2149605376, access_type=1, mmu_idx=1) at /opt/qemu-src/qemu-4.1.1/target/riscv/cpu_helper.c:158
+158	{
+
+===== [I] get_physical_address（Bare）=====
+#0  get_physical_address (env=0xaaaafe61eeb0, physical=0xffffbca6cb80, prot=0xffffbca6cb74, addr=2149605376, access_type=1, mmu_idx=1) at /opt/qemu-src/qemu-4.1.1/target/riscv/cpu_helper.c:158
+#1  0x0000aaaad01af634 in riscv_cpu_tlb_fill (cs=0xaaaafe616420, address=2149605376, size=8, access_type=MMU_DATA_STORE, mmu_idx=1, probe=false, retaddr=281473735520900) at /opt/qemu-src/qemu-4.1.1/target/riscv/cpu_helper.c:451
+#2  0x0000aaaad00eb234 in tlb_fill (cpu=0xaaaafe616420, addr=2149605376, size=8, access_type=MMU_DATA_STORE, mmu_idx=1, retaddr=281473735520900) at /opt/qemu-src/qemu-4.1.1/accel/tcg/cputlb.c:878
+#3  0x0000aaaad00f0cbc in store_helper (big_endian=false, size=8, retaddr=281473735520900, oi=49, val=0, addr=2149605376, env=0xaaaafe61eeb0) at /opt/qemu-src/qemu-4.1.1/accel/tcg/cputlb.c:1522
+addr=0x80206000 access_type=1 mmu_idx=1 satp=0x0 priv_ver=0x11100
+Breakpoint 3 at 0xaaaad01aeab0: file /opt/qemu-src/qemu-4.1.1/target/riscv/cpu_helper.c, line 197.
+
+Thread 2 "qemu-system-ris" hit Breakpoint 3, get_physical_address (env=0xaaaafe61eeb0, physical=0xffffbca6cb80, prot=0xffffbca6cb74, addr=2149605376, access_type=1, mmu_idx=1) at /opt/qemu-src/qemu-4.1.1/target/riscv/cpu_helper.c:197
+197	            *physical = addr;
+
+===== [I] 走到 case VM_1_10_MBARE =====
+mode=1 vm=0
+198	            *prot = PAGE_READ | PAGE_WRITE | PAGE_EXEC;
+*physical=0x80206000（等于 addr，没有查页表）
+Breakpoint 4 at 0xaaaad00eac24: file /opt/qemu-src/qemu-4.1.1/accel/tcg/cputlb.c, line 700.
+
+Thread 2 "qemu-system-ris" hit Breakpoint 4, tlb_set_page_with_attrs (cpu=0xaaaafe616420, vaddr=2149605376, paddr=2149605376, attrs=..., prot=7, mmu_idx=1, size=4096) at /opt/qemu-src/qemu-4.1.1/accel/tcg/cputlb.c:700
+700	{
+
+===== [J] 装入软件 TLB（VA==PA）=====
+vaddr=0x80206000 paddr=0x80206000 prot=7 mmu_idx=1
+Breakpoint 5 at 0xaaaad00eb8e8: file /opt/qemu-src/qemu-4.1.1/accel/tcg/cputlb.c, line 1030.
+Breakpoint 6 at 0xaaaad01ae8c4: file /opt/qemu-src/qemu-4.1.1/target/riscv/cpu_helper.c, line 158.
+Breakpoint 7 at 0xaaaad01ae8c4: file /opt/qemu-src/qemu-4.1.1/target/riscv/cpu_helper.c, line 158.
+
+Thread 2 "qemu-system-ris" hit Breakpoint 5, get_page_addr_code (env=0xaaaafe61eeb0, addr=2149580856) at /opt/qemu-src/qemu-4.1.1/accel/tcg/cputlb.c:1030
+1030	    if (unlikely(!tlb_hit(entry->addr_code, addr))) {
+
+===== [K] 写 satp 之后第一次停下 =====
+#0  get_page_addr_code (env=0xaaaafe61eeb0, addr=2149580856) at /opt/qemu-src/qemu-4.1.1/accel/tcg/cputlb.c:1030
+#1  0x0000aaaad0112b38 in tb_htable_lookup (cpu=0xaaaafe616420, pc=2149580856, cs_base=0, flags=24577, cf_mask=4278714368) at /opt/qemu-src/qemu-4.1.1/accel/tcg/cpu-exec.c:339
+addr=0x80200038 satp=0x8000000000080205
+（若停在 get_page_addr_code，下面是代码 TLB 表项）
+$1 = 0x80200000
+$2 = 0x0
+
+Thread 2 "qemu-system-ris" hit Breakpoint 5, get_page_addr_code (env=0xaaaafe61eeb0, addr=2149580856) at /opt/qemu-src/qemu-4.1.1/accel/tcg/cputlb.c:1030
+1030	    if (unlikely(!tlb_hit(entry->addr_code, addr))) {
+
+===== [K] 第二次停下 =====
+#0  get_page_addr_code (env=0xaaaafe61eeb0, addr=2149580856) at /opt/qemu-src/qemu-4.1.1/accel/tcg/cputlb.c:1030
+#1  0x0000aaaad0116cac in tb_gen_code (cpu=0xaaaafe616420, pc=2149580856, cs_base=0, flags=24577, cflags=524288) at /opt/qemu-src/qemu-4.1.1/accel/tcg/translate-all.c:1686
+addr=0x80200038 satp=0x8000000000080205
+[Inferior 1 (process 10) detached]

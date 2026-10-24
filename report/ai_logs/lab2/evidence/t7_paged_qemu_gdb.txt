@@ -1,0 +1,79 @@
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib/aarch64-linux-gnu/libthread_db.so.1".
+0x0000ffff8b3f1188 in __GI_ppoll (fds=0xaaaade1b28e0, nfds=6, timeout=<optimized out>, sigmask=0x0) at ../sysdeps/unix/sysv/linux/ppoll.c:42
+
+warning: 42	../sysdeps/unix/sysv/linux/ppoll.c: No such file or directory
+Breakpoint 1 at 0xaaaac821e8c4: file /opt/qemu-src/qemu-4.1.1/target/riscv/cpu_helper.c, line 158.
+[Switching to Thread 0xffff8a1bdd40 (LWP 14)]
+
+Thread 2 "qemu-system-ris" hit Breakpoint 1, get_physical_address (env=0xaaaade16eeb0, physical=0xffff8a1bcb90, prot=0xffff8a1bcb84, addr=18446744072637935624, access_type=0, mmu_idx=1) at /opt/qemu-src/qemu-4.1.1/target/riscv/cpu_helper.c:158
+158	{
+
+===== [A] 命中 get_physical_address：调用栈 =====
+#0  get_physical_address (env=0xaaaade16eeb0, physical=0xffff8a1bcb90, prot=0xffff8a1bcb84, addr=18446744072637935624, access_type=0, mmu_idx=1) at /opt/qemu-src/qemu-4.1.1/target/riscv/cpu_helper.c:158
+#1  0x0000aaaac821f634 in riscv_cpu_tlb_fill (cs=0xaaaade166420, address=18446744072637935624, size=8, access_type=MMU_DATA_LOAD, mmu_idx=1, probe=false, retaddr=281472863184076) at /opt/qemu-src/qemu-4.1.1/target/riscv/cpu_helper.c:451
+#2  0x0000aaaac815b234 in tlb_fill (cpu=0xaaaade166420, addr=18446744072637935624, size=8, access_type=MMU_DATA_LOAD, mmu_idx=1, retaddr=281472863184076) at /opt/qemu-src/qemu-4.1.1/accel/tcg/cputlb.c:878
+#3  0x0000aaaac815e220 in load_helper (full_load=0xaaaac815e054 <helper_le_ldq_mmu>, code_read=false, big_endian=false, size=8, retaddr=281472863184076, oi=49, addr=18446744072637935624, env=0xaaaade16eeb0) at /opt/qemu-src/qemu-4.1.1/accel/tcg/cputlb.c:1274
+#4  helper_le_ldq_mmu (env=0xaaaade16eeb0, addr=18446744072637935624, oi=49, retaddr=281472863184076) at /opt/qemu-src/qemu-4.1.1/accel/tcg/cputlb.c:1449
+#5  0x0000ffff82062578 in code_gen_buffer ()
+#6  0x0000aaaac8182574 in cpu_tb_exec (cpu=0xaaaade166420, itb=0xffff820623c0 <code_gen_buffer+402292>) at /opt/qemu-src/qemu-4.1.1/accel/tcg/cpu-exec.c:173
+
+===== [A] 参数与 CPU 状态 =====
+env = 0xaaaade16eeb0
+physical = 0xffff8a1bcb90
+prot = 0xffff8a1bcb84
+addr = 18446744072637935624
+access_type = 0
+mmu_idx = 1
+addr=0xffffffffc0207008 satp=0x8000000000080205 priv=1
+Breakpoint 2 at 0xaaaac821ed54: file /opt/qemu-src/qemu-4.1.1/target/riscv/cpu_helper.c, line 254.
+
+Thread 2 "qemu-system-ris" hit Breakpoint 2, get_physical_address (env=0xaaaade16eeb0, physical=0xffff8a1bcb90, prot=0xffff8a1bcb84, addr=18446744072637935624, access_type=0, mmu_idx=1) at /opt/qemu-src/qemu-4.1.1/target/riscv/cpu_helper.c:254
+254	        target_ulong ppn = pte >> PTE_PPN_SHIFT;
+
+===== [B] 第一层页表项 =====
+levels=3 ptidxbits=9 ptesize=8 i=0 ptshift=18
+base(根页表物理地址)=0x80205000 idx=511 pte_addr=0x80205ff8 pte=0x200000cf
+256	        if (!(pte & PTE_V)) {
+ppn=0x80000  V=1 R=1 W=1 X=1 U=0 A=1 D=1
+Breakpoint 3 at 0xaaaac821eff8: file /opt/qemu-src/qemu-4.1.1/target/riscv/cpu_helper.c, line 334.
+
+Thread 2 "qemu-system-ris" hit Breakpoint 3, get_physical_address (env=0xaaaade16eeb0, physical=0xffff8a1bcb90, prot=0xffff8a1bcb84, addr=18446744072637935624, access_type=0, mmu_idx=1) at /opt/qemu-src/qemu-4.1.1/target/riscv/cpu_helper.c:334
+334	            *physical = (ppn | (vpn & ((1L << ptshift) - 1))) << PGSHIFT;
+
+===== [C] 叶子页表项，拼接物理地址 =====
+i=0 ptshift=18 vpn=0xffffffffc0207 ppn=0x80000
+337	            if ((pte & PTE_R) || ((pte & PTE_X) && mxr)) {
+*physical(4KB 物理页基址)=0x80207000  完整物理地址=0x80207008
+0x0000aaaac821f634 in riscv_cpu_tlb_fill (cs=0xaaaade166420, address=18446744072637935624, size=8, access_type=MMU_DATA_LOAD, mmu_idx=1, probe=false, retaddr=281472863184076) at /opt/qemu-src/qemu-4.1.1/target/riscv/cpu_helper.c:451
+451	    ret = get_physical_address(env, &pa, &prot, address, access_type, mmu_idx);
+Value returned is $1 = 0
+
+===== [D] 返回 riscv_cpu_tlb_fill =====
+cpu = 0xaaaade166420
+__func__ = "riscv_cpu_tlb_fill"
+env = 0xaaaade16eeb0
+pa = 2149609472
+prot = 7
+pmp_violation = false
+ret = 1
+mode = 1
+Breakpoint 4 at 0xaaaac815ac24: file /opt/qemu-src/qemu-4.1.1/accel/tcg/cputlb.c, line 700.
+
+Thread 2 "qemu-system-ris" hit Breakpoint 4, tlb_set_page_with_attrs (cpu=0xaaaade166420, vaddr=18446744072637935616, paddr=2149609472, attrs=..., prot=7, mmu_idx=1, size=4096) at /opt/qemu-src/qemu-4.1.1/accel/tcg/cputlb.c:700
+700	{
+
+===== [E] tlb_set_page_with_attrs =====
+vaddr=0xffffffffc0207000 paddr=0x80207000 prot=7 mmu_idx=1 size=0x1000
+Breakpoint 5 at 0xaaaac815c5e8: accel/tcg/cputlb.c:1338. (14 locations)
+
+Thread 2 "qemu-system-ris" hit Breakpoint 5.6, load_helper (full_load=0xaaaac815e054 <helper_le_ldq_mmu>, code_read=false, big_endian=false, size=8, retaddr=281472863184076, oi=49, addr=18446744072637935624, env=0xaaaade16eeb0) at /opt/qemu-src/qemu-4.1.1/accel/tcg/cputlb.c:1338
+1338	    haddr = (void *)((uintptr_t)addr + entry->addend);
+
+===== [F] load_helper：VA + addend = 宿主指针 =====
+addr_read(tag)=0xffffffffc0207000 addend=0xffffafe00000
+1339	    switch (size) {
+haddr=0xffff70007008  *(uint64_t*)haddr=0x0
+Breakpoint 6 at 0xaaaac815c268: accel/tcg/cputlb.c:1271. (14 locations)
+Breakpoint 7 at 0xaaaac821e8c4: file /opt/qemu-src/qemu-4.1.1/target/riscv/cpu_helper.c, line 158.
+[Inferior 1 (process 10) detached]

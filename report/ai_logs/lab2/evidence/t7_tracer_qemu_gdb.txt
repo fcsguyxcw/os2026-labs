@@ -1,0 +1,30 @@
+[New LWP 14]
+[New LWP 13]
+[New LWP 12]
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib/aarch64-linux-gnu/libthread_db.so.1".
+0x0000ffff839c1188 in __GI_ppoll (fds=0xaaab00c838e0, nfds=6, timeout=<optimized out>, sigmask=0x0) at ../sysdeps/unix/sysv/linux/ppoll.c:42
+
+warning: 42	../sysdeps/unix/sysv/linux/ppoll.c: No such file or directory
+Breakpoint 1 at 0xaaaadc35e8c4: file /opt/qemu-src/qemu-4.1.1/target/riscv/cpu_helper.c, line 158.
+[Switching to Thread 0xffff7bffed40 (LWP 14)]
+
+Thread 2 "qemu-system-ris" hit Breakpoint 1, get_physical_address (env=0xaaab00c3feb0, physical=0xffff7bffdb90, prot=0xffff7bffdb84, addr=18446744072637935624, access_type=0, mmu_idx=1) at /opt/qemu-src/qemu-4.1.1/target/riscv/cpu_helper.c:158
+158	{
+#0  get_physical_address (env=0xaaab00c3feb0, physical=0xffff7bffdb90, prot=0xffff7bffdb84, addr=18446744072637935624, access_type=0, mmu_idx=1) at /opt/qemu-src/qemu-4.1.1/target/riscv/cpu_helper.c:158
+#1  0x0000aaaadc35f634 in riscv_cpu_tlb_fill (cs=0xaaab00c37420, address=18446744072637935624, size=8, access_type=MMU_DATA_LOAD, mmu_idx=1, probe=false, retaddr=281472835921100) at /opt/qemu-src/qemu-4.1.1/target/riscv/cpu_helper.c:451
+#2  0x0000aaaadc29b234 in tlb_fill (cpu=0xaaab00c37420, addr=18446744072637935624, size=8, access_type=MMU_DATA_LOAD, mmu_idx=1, retaddr=281472835921100) at /opt/qemu-src/qemu-4.1.1/accel/tcg/cputlb.c:878
+#3  0x0000aaaadc29e220 in load_helper (full_load=0xaaaadc29e054 <helper_le_ldq_mmu>, code_read=false, big_endian=false, size=8, retaddr=281472835921100, oi=49, addr=18446744072637935624, env=0xaaab00c3feb0) at /opt/qemu-src/qemu-4.1.1/accel/tcg/cputlb.c:1274
+#4  helper_le_ldq_mmu (env=0xaaab00c3feb0, addr=18446744072637935624, oi=49, retaddr=281472835921100) at /opt/qemu-src/qemu-4.1.1/accel/tcg/cputlb.c:1449
+#5  0x0000ffff80662578 in code_gen_buffer ()
+#6  0x0000aaaadc2c2574 in cpu_tb_exec (cpu=0xaaab00c37420, itb=0xffff806623c0 <code_gen_buffer+402292>) at /opt/qemu-src/qemu-4.1.1/accel/tcg/cpu-exec.c:173
+#7  0x0000aaaadc2c3538 in cpu_loop_exec_tb (cpu=0xaaab00c37420, tb=0xffff806623c0 <code_gen_buffer+402292>, last_tb=0xffff7bffe2a8, tb_exit=0xffff7bffe2a0) at /opt/qemu-src/qemu-4.1.1/accel/tcg/cpu-exec.c:621
+env = 0xaaab00c3feb0
+physical = 0xffff7bffdb90
+prot = 0xffff7bffdb84
+addr = 18446744072637935624
+access_type = 0
+mmu_idx = 1
+$1 = 0x8000000000080205
+$2 = 1
+[Inferior 1 (process 10) detached]
