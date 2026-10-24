@@ -1,0 +1,257 @@
+--- a/code/kern/mm/slub.c
++++ b/code/kern/mm/slub.c
+@@ -216,14 +216,245 @@
+     }
+ }
+ 
+-// Task 12 将独立补充完整测试；这里只检查一次最小分配与归还。
++// 以下辅助函数仅用于 slub_check，不改变分配器的实现或内部状态。
++static void
++slub_test_empty(size_t expected_pages) {
++    assert(initialized && live_objects == 0);
++    assert(nr_free_pages() == expected_pages);
++    for (size_t i = 0; i < NR_CACHES; i ++) {
++        struct slub_cache *cache = &caches[i];
++        assert(cache->nr_slabs == 0 && cache->nr_inuse == 0);
++        assert(list_empty(&cache->partial));
++        assert(list_prev(&cache->partial) == &cache->partial);
++        assert(cache->object_size == size_classes[i]);
++        assert(cache->object_offset == ROUNDUP(sizeof(struct slab_header),
++                                               cache->object_size));
++        assert(cache->objects_per_slab ==
++               (PGSIZE - cache->object_offset) / cache->object_size);
++    }
++}
++
++static void
++slub_test_fill(void *ptr, size_t size, uint8_t pattern) {
++    volatile uint8_t *bytes = ptr;
++    for (size_t i = 0; i < size; i ++) {
++        bytes[i] = pattern;
++    }
++}
++
++static void
++slub_test_read(const void *ptr, size_t size, uint8_t pattern) {
++    const volatile uint8_t *bytes = ptr;
++    for (size_t i = 0; i < size; i ++) {
++        assert(bytes[i] == pattern);
++    }
++}
++
++static struct slab_header *
++slub_test_small(void *ptr, size_t size) {
++    assert(ptr != NULL && ((uintptr_t)ptr & 7) == 0);
++    struct slab_header *slab =
++        (struct slab_header *)ROUNDDOWN((uintptr_t)ptr, PGSIZE);
++    assert(slab->magic == SLAB_MAGIC);
++    size_t class_idx = 0;
++    while (class_idx < NR_CACHES && size_classes[class_idx] < size) {
++        class_idx ++;
++    }
++    assert(class_idx < NR_CACHES);
++    struct slub_cache *cache = &caches[class_idx];
++    assert(slab->cache == cache && cache->object_size == size_classes[class_idx]);
++    size_t offset = (uintptr_t)ptr - (uintptr_t)slab;
++    assert(offset >= cache->object_offset && offset < PGSIZE);
++    assert((offset - cache->object_offset) % cache->object_size == 0);
++    assert(size <= cache->object_size && cache->object_size <= PGSIZE - offset);
++    return slab;
++}
++
++static bool
++slub_test_partial_has(struct slub_cache *cache, struct slab_header *slab) {
++    list_entry_t *head = &cache->partial;
++    size_t visited = 0;
++    for (list_entry_t *le = list_next(head); le != head; le = list_next(le)) {
++        assert(visited < cache->nr_slabs);
++        visited ++;
++        assert(list_prev(list_next(le)) == le);
++        assert(list_next(list_prev(le)) == le);
++        if (le == &slab->link) {
++            return 1;
++        }
++    }
++    return 0;
++}
++
++static uint32_t
++slub_test_random(uint32_t *state) {
++    *state = *state * 1664525U + 1013904223U;
++    return *state;
++}
++
+ void
+ slub_check(void) {
+-    void *obj = kmalloc(32);
+-    assert(obj != NULL);
+-    volatile uint8_t *byte = obj;
+-    *byte = 0x5a;
+-    assert(*byte == 0x5a);
+-    kfree(obj);
+-    cprintf("slub_check: placeholder\n");
+-}
++    cprintf("slub_check: zero and null inputs\n");
++    size_t initial_pages = nr_free_pages();
++    slub_test_empty(initial_pages);
++    assert(kmalloc(0) == NULL);
++    slub_test_empty(initial_pages);
++    kfree(NULL);
++    slub_test_empty(initial_pages);
++
++    cprintf("slub_check: size classes and alignment\n");
++    const size_t requests[] = {
++        1, 8, 9, 16, 17, 31, 32, 33, 64, 100, 128, 200,
++        256, 300, 512, 700, 1024, 1500, 2048,
++    };
++    void *objects[sizeof(requests) / sizeof(requests[0])];
++    size_t count = sizeof(requests) / sizeof(requests[0]);
++    for (size_t i = 0; i < count; i ++) {
++        objects[i] = kmalloc(requests[i]);
++        slub_test_small(objects[i], requests[i]);
++        assert(live_objects == i + 1);
++        for (size_t j = 0; j < i; j ++) {
++            uintptr_t a = (uintptr_t)objects[i], b = (uintptr_t)objects[j];
++            assert(a + requests[i] <= b || b + requests[j] <= a);
++        }
++    }
++
++    cprintf("slub_check: independent object data\n");
++    for (size_t i = 0; i < count; i ++) {
++        slub_test_fill(objects[i], requests[i], (uint8_t)(0x51 + 7 * i));
++    }
++    for (size_t i = 0; i < count; i ++) {
++        slub_test_read(objects[i], requests[i], (uint8_t)(0x51 + 7 * i));
++    }
++    for (size_t i = 0; i < count; i ++) {
++        // 先释放的对象不应破坏仍在使用的相邻对象或同页对象。
++        slub_test_read(objects[i], requests[i], (uint8_t)(0x51 + 7 * i));
++        kfree(objects[i]);
++    }
++    slub_test_empty(initial_pages);
++
++    cprintf("slub_check: slab expansion and full-list removal\n");
++    size_t class_idx = 0;
++    while (class_idx < NR_CACHES && size_classes[class_idx] != 64) {
++        class_idx ++;
++    }
++    assert(class_idx < NR_CACHES);
++    struct slub_cache *cache = &caches[class_idx];
++    size_t capacity = cache->objects_per_slab;
++    size_t old_slabs = cache->nr_slabs, old_inuse = cache->nr_inuse;
++    size_t expansion_pages = nr_free_pages();
++    void *expanded[PGSIZE / 64 + 1];
++    assert(capacity > 1 && capacity + 1 <= sizeof(expanded) / sizeof(expanded[0]));
++    struct slab_header *first = NULL;
++    for (size_t i = 0; i <= capacity; i ++) {
++        expanded[i] = kmalloc(64);
++        struct slab_header *slab = slub_test_small(expanded[i], 64);
++        if (i == 0) {
++            first = slab;
++        }
++        if (i < capacity) {
++            assert(slab == first);
++        } else {
++            assert(slab != first);
++        }
++        slub_test_fill(expanded[i], 64, (uint8_t)(0x21 + i));
++        if (i + 1 == capacity) {
++            assert(first->nr_free == 0 && first->freelist == NULL);
++            assert(!slub_test_partial_has(cache, first));
++        }
++    }
++    assert(cache->nr_slabs == old_slabs + 2);
++    assert(cache->nr_inuse == old_inuse + capacity + 1);
++    assert(nr_free_pages() == expansion_pages - 2);
++    assert(!slub_test_partial_has(cache, first));
++
++    cprintf("slub_check: LIFO reuse\n");
++    slub_test_read(expanded[0], 64, 0x21);
++    kfree(expanded[0]);
++    assert(slub_test_partial_has(cache, first));
++    assert(cache->nr_slabs == old_slabs + 2);
++    void *reused = kmalloc(64);
++    assert(reused == expanded[0]);
++    expanded[0] = reused;
++    slub_test_fill(reused, 64, 0x21);
++    assert(!slub_test_partial_has(cache, first));
++    assert(cache->nr_inuse == old_inuse + capacity + 1);
++
++    cprintf("slub_check: empty slabs return their pages\n");
++    for (size_t i = 0; i <= capacity; i ++) {
++        slub_test_read(expanded[i], 64, (uint8_t)(0x21 + i));
++        kfree(expanded[i]);
++    }
++    assert(cache->nr_slabs == old_slabs && cache->nr_inuse == old_inuse);
++    assert(nr_free_pages() == expansion_pages);
++    slub_test_empty(initial_pages);
++
++    cprintf("slub_check: large objects and page accounting\n");
++    const size_t large_sizes[] = {2049, PGSIZE - 16, PGSIZE, 3 * PGSIZE + 1};
++    for (size_t i = 0; i < sizeof(large_sizes) / sizeof(large_sizes[0]); i ++) {
++        size_t pages_before = nr_free_pages();
++        size_t needed = ROUNDUP(large_sizes[i] + sizeof(struct large_header),
++                                PGSIZE) / PGSIZE;
++        void *ptr = kmalloc(large_sizes[i]);
++        assert(ptr != NULL && ((uintptr_t)ptr & 7) == 0);
++        assert(nr_free_pages() == pages_before - needed && live_objects == 1);
++        struct large_header *header =
++            (struct large_header *)ROUNDDOWN((uintptr_t)ptr, PGSIZE);
++        assert(header->magic == LARGE_MAGIC && header->npages == needed);
++        assert(ptr == (void *)(header + 1));
++        slub_test_fill(ptr, large_sizes[i], (uint8_t)(0xa0 + i));
++        slub_test_read(ptr, large_sizes[i], (uint8_t)(0xa0 + i));
++        kfree(ptr);
++        slub_test_empty(initial_pages);
++    }
++
++    cprintf("slub_check: deterministic interleaved stress\n");
++    void *slots[32] = {NULL};
++    size_t sizes[32] = {0};
++    uint8_t patterns[32] = {0};
++    uint32_t random_state = 0x2412172U;
++    size_t active = 0;
++    for (size_t step = 0; step < 512; step ++) {
++        // 取高位选择槽位，避免线性同余序列低位短周期影响覆盖。
++        size_t slot = (slub_test_random(&random_state) >> 16) % 32;
++        if (slots[slot] != NULL) {
++            slub_test_read(slots[slot], sizes[slot], patterns[slot]);
++            kfree(slots[slot]);
++            slots[slot] = NULL;
++            active --;
++        } else {
++            sizes[slot] = 1 + (slub_test_random(&random_state) >> 8) % 3000;
++            slots[slot] = kmalloc(sizes[slot]);
++            assert(slots[slot] != NULL && ((uintptr_t)slots[slot] & 7) == 0);
++            for (size_t j = 0; j < 32; j ++) {
++                if (j != slot && slots[j] != NULL) {
++                    uintptr_t a = (uintptr_t)slots[slot], b = (uintptr_t)slots[j];
++                    assert(a + sizes[slot] <= b || b + sizes[j] <= a);
++                }
++            }
++            patterns[slot] = (uint8_t)(step * 37 + slot * 17 + 1);
++            slub_test_fill(slots[slot], sizes[slot], patterns[slot]);
++            active ++;
++        }
++        assert(live_objects == active);
++    }
++    for (size_t i = 0; i < 32; i ++) {
++        if (slots[i] != NULL) {
++            slub_test_read(slots[i], sizes[i], patterns[i]);
++            kfree(slots[i]);
++            active --;
++        }
++    }
++    assert(active == 0);
++    slub_test_empty(initial_pages);
++
++    cprintf("slub_check: failed allocations preserve state\n");
++    size_t failure_pages = nr_free_pages(), failure_live = live_objects;
++    assert(kmalloc((size_t)-1) == NULL);
++    assert(nr_free_pages() == failure_pages && live_objects == failure_live);
++    slub_test_empty(initial_pages);
++    assert(kmalloc((failure_pages + 1) * PGSIZE) == NULL);
++    assert(nr_free_pages() == failure_pages && live_objects == failure_live);
++    slub_test_empty(initial_pages);
++    cprintf("slub_check() succeeded!\n");
++}

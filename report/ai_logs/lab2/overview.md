@@ -10,6 +10,16 @@ Leader：Claude Code（Claude Opus 5.5）。子 Agent 通过 Herdr 终端复用�
 | [02](task_02.md) | Codex w1:p3 | Best-Fit 管理器；Leader 切换 `init_pmm_manager` | DONE，grade 20/20 |
 | [03](task_03.md) | Codex w1:p2 / w1:p3 | 交叉 Review | Best-Fit PASS；page_init NEEDS_FIX → Bug 2 |
 | [04](task_04.md) | Codex w1:p2 | 修复描述符数组越界 | DONE；越界分支运行时 UNVERIFIED |
+| [05](task_05.md) | Codex w1:p3 | 分支任务：QEMU 源码静态分析与调试方案 | DONE（经 Task 07 实测验证） |
+| [06](task_06.md) | Codex w1:p2 | 报告 P0 部分、First-Fit 思考题、Challenge | DONE |
+| [07](task_07.md) | Leader | 分支任务：Docker 中双 gdb 实际调试（两轮）+ satp 旧 TLB 表项现象 | DONE |
+| [08](task_08.md) | Codex w1:p3 | 报告分支任务 6 问、演示步骤 | DONE；演示稿命令经 Leader 批处理验证 |
+| [09](task_09.md) | Codex w1:p2 | Buddy System 实现（第一份 prompt）；Leader 加编译开关 | DONE |
+| [10](task_10.md) | Codex w1:p2 | Buddy 测试（第二份 prompt） | DONE；8 组通过，3 个变异全部检出 |
+| [11](task_11.md) | Codex w1:p3 | SLUB 实现（第一份 prompt） | DONE |
+| [12](task_12.md) | Codex w1:p2 | SLUB 测试（第二份 prompt） | DONE；9 组通过，3 个变异全部检出 |
+| [13](task_13.md) | Codex w1:p3 | 报告 Buddy 一节 | DONE |
+| [14](task_14.md) | Codex w1:p3 | 报告收尾：SLUB、知识点、总结、final_summary | 进行中 |
 
 ## 调度消息原文
 
@@ -19,3 +29,10 @@ Leader：Claude Code（Claude Opus 5.5）。子 Agent 通过 Herdr 终端复用�
 - 2026-10-24 → w1:p2（Task 04）：「你是 OS Lab2 的 Debug Agent。请阅读 …/task_04.md 的 PROMPT/RELY/GUARANTEE/SPECIFICATION 并执行。不要尝试 Docker，不要改 page_init 以外的代码。」
 
 Bug 记录见 [bugs.md](bugs.md)，原始输出见 `evidence/`。
+- 2026-10-24 → 其余任务（Task 05、06、08～13）的调度消息格式相同：「你是 OS Lab2 的 <角色> Agent。请阅读 …/task_0X.md 的 PROMPT/RELY/GUARANTEE/SPECIFICATION 并执行。<只改哪些文件 / 不要尝试 Docker / 上一步 Leader 的验证结果>」。完整内容以各 task 文件为准。
+
+## 编译开关（扩展任务）
+
+- 默认 `make`：Best-Fit，`make grade` 20/20。
+- `make DEFS=-DLAB2_PMM_BUDDY`：系统物理内存管理器换成 Buddy，`check` 运行 `buddy_check`。
+- `make DEFS=-DLAB2_SLUB_TEST`：在 `check_alloc_page()` 之后运行 `slub_init(); slub_check();`。

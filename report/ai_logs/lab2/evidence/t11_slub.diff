@@ -1,0 +1,235 @@
+diff --git a/code/kern/mm/slub.c b/code/kern/mm/slub.c
+new file mode 100644
+index 0000000..ae4b291
+--- /dev/null
++++ b/code/kern/mm/slub.c
+@@ -0,0 +1,229 @@
++#include <slub.h>
++#include <pmm.h>
++#include <list.h>
++#include <stdio.h>
++
++#define SLAB_MAGIC 0x534c5542534c4142ULL
++#define LARGE_MAGIC 0x534c55424c415247ULL
++
++static const size_t size_classes[] = {
++    8, 16, 32, 64, 128, 256, 512, 1024, 2048,
++};
++#define NR_CACHES (sizeof(size_classes) / sizeof(size_classes[0]))
++
++struct slub_cache {
++    size_t object_size;
++    size_t object_offset;
++    size_t objects_per_slab;
++    list_entry_t partial;
++    size_t nr_slabs;
++    size_t nr_inuse;
++};
++
++// 元数据只占用已申请页的内容，不借用物理页描述符字段。
++struct slab_header {
++    uint64_t magic;
++    struct slub_cache *cache;
++    size_t nr_free;
++    void *freelist;
++    list_entry_t link;
++};
++
++struct large_header {
++    uint64_t magic;
++    size_t npages;
++};
++
++static struct slub_cache caches[NR_CACHES];
++static bool initialized;
++static size_t live_objects;
++
++void
++slub_init(void) {
++    // 重置前不得有未归还的对象，否则会丢失所属 slab。
++    assert(live_objects == 0);
++    for (size_t i = 0; i < NR_CACHES; i ++) {
++        struct slub_cache *cache = &caches[i];
++        cache->object_size = size_classes[i];
++        cache->object_offset = ROUNDUP(sizeof(struct slab_header),
++                                       cache->object_size);
++        cache->objects_per_slab =
++            (PGSIZE - cache->object_offset) / cache->object_size;
++        assert(cache->objects_per_slab > 0);
++        list_init(&cache->partial);
++        cache->nr_slabs = cache->nr_inuse = 0;
++    }
++    initialized = 1;
++}
++
++static struct slab_header *
++new_slab(struct slub_cache *cache) {
++    struct Page *page = alloc_pages(1);
++    if (page == NULL) {
++        return NULL;
++    }
++    struct slab_header *slab =
++        (struct slab_header *)(page2pa(page) + va_pa_offset);
++    slab->magic = SLAB_MAGIC;
++    slab->cache = cache;
++    slab->nr_free = cache->objects_per_slab;
++    slab->freelist = NULL;
++    list_init(&slab->link);
++
++    // 空闲对象的前一个指针大小空间保存下一个空闲对象。
++    for (size_t i = cache->objects_per_slab; i > 0; i --) {
++        void *obj = (void *)((uintptr_t)slab + cache->object_offset +
++                             (i - 1) * cache->object_size);
++        *(void **)obj = slab->freelist;
++        slab->freelist = obj;
++    }
++    list_add(&cache->partial, &slab->link);
++    cache->nr_slabs ++;
++    return slab;
++}
++
++static void *
++alloc_large(size_t size) {
++    // 同时防止加页头和向上页对齐发生无符号回绕。
++    if (size > (size_t)-1 - sizeof(struct large_header) - (PGSIZE - 1)) {
++        return NULL;
++    }
++    size_t npages = ROUNDUP(size + sizeof(struct large_header), PGSIZE)
++                    / PGSIZE;
++    struct Page *page = alloc_pages(npages);
++    if (page == NULL) {
++        return NULL;
++    }
++    struct large_header *header =
++        (struct large_header *)(page2pa(page) + va_pa_offset);
++    header->magic = LARGE_MAGIC;
++    header->npages = npages;
++    live_objects ++;
++    return header + 1;
++}
++
++void *
++kmalloc(size_t size) {
++    if (size == 0) {
++        return NULL;
++    }
++    assert(initialized);
++    for (size_t i = 0; i < NR_CACHES; i ++) {
++        struct slub_cache *cache = &caches[i];
++        if (size > cache->object_size) {
++            continue;
++        }
++        struct slab_header *slab;
++        if (list_empty(&cache->partial)) {
++            slab = new_slab(cache);
++            if (slab == NULL) {
++                return NULL;
++            }
++        } else {
++            slab = to_struct(list_next(&cache->partial),
++                             struct slab_header, link);
++        }
++        assert(slab->magic == SLAB_MAGIC && slab->cache == cache);
++        assert(slab->nr_free > 0 && slab->freelist != NULL);
++        void *obj = slab->freelist;
++        slab->freelist = *(void **)obj;
++        slab->nr_free --;
++        cache->nr_inuse ++;
++        live_objects ++;
++        if (slab->nr_free == 0) {
++            list_del_init(&slab->link);
++        }
++        return obj;
++    }
++    return alloc_large(size);
++}
++
++static void
++free_small(struct slab_header *slab, void *ptr) {
++    struct slub_cache *cache = NULL;
++    for (size_t i = 0; i < NR_CACHES; i ++) {
++        if (slab->cache == &caches[i]) {
++            cache = &caches[i];
++            break;
++        }
++    }
++    if (cache == NULL) {
++        panic("kfree: invalid slab cache for %p", ptr);
++    }
++    uintptr_t first = (uintptr_t)slab + cache->object_offset;
++    uintptr_t addr = (uintptr_t)ptr;
++    if (addr < first ||
++        addr >= first + cache->objects_per_slab * cache->object_size ||
++        (addr - first) % cache->object_size != 0) {
++        panic("kfree: invalid slab object address %p", ptr);
++    }
++    // 沿本页的空闲链表检查重复释放，不另占 bitmap 或 Page 字段。
++    for (void *obj = slab->freelist; obj != NULL; obj = *(void **)obj) {
++        if (obj == ptr) {
++            panic("kfree: double free of %p", ptr);
++        }
++    }
++    assert(slab->nr_free < cache->objects_per_slab);
++    assert(cache->nr_inuse > 0 && live_objects > 0);
++    if (slab->nr_free == 0) {
++        list_add(&cache->partial, &slab->link);
++    }
++    *(void **)ptr = slab->freelist;
++    slab->freelist = ptr;
++    slab->nr_free ++;
++    cache->nr_inuse --;
++    live_objects --;
++    if (slab->nr_free == cache->objects_per_slab) {
++        list_del_init(&slab->link);
++        assert(cache->nr_slabs > 0);
++        cache->nr_slabs --;
++        slab->magic = 0;
++        free_pages(pa2page(PADDR(slab)), 1);
++    }
++}
++
++void
++kfree(void *ptr) {
++    if (ptr == NULL) {
++        return;
++    }
++    assert(initialized);
++    uintptr_t addr = (uintptr_t)ptr;
++    if (addr < KERNBASE || addr >= KERNTOP) {
++        panic("kfree: invalid kernel address %p", ptr);
++    }
++    uintptr_t base = ROUNDDOWN(addr, PGSIZE);
++    uintptr_t pa = PADDR(base);
++    if (PPN(pa) < nbase || PPN(pa) >= npage) {
++        panic("kfree: address outside managed memory %p", ptr);
++    }
++    uint64_t magic = *(uint64_t *)base;
++    if (magic == SLAB_MAGIC) {
++        free_small((struct slab_header *)base, ptr);
++    } else if (magic == LARGE_MAGIC) {
++        struct large_header *header = (struct large_header *)base;
++        if (ptr != (void *)(header + 1) || header->npages == 0 ||
++            header->npages > npage - PPN(pa)) {
++            panic("kfree: invalid large object address or header %p", ptr);
++        }
++        size_t npages = header->npages;
++        assert(live_objects > 0);
++        live_objects --;
++        header->magic = 0;
++        free_pages(pa2page(PADDR(header)), npages);
++    } else {
++        panic("kfree: invalid magic for %p", ptr);
++    }
++}
++
++// Task 12 将独立补充完整测试；这里只检查一次最小分配与归还。
++void
++slub_check(void) {
++    void *obj = kmalloc(32);
++    assert(obj != NULL);
++    volatile uint8_t *byte = obj;
++    *byte = 0x5a;
++    assert(*byte == 0x5a);
++    kfree(obj);
++    cprintf("slub_check: placeholder\n");
++}

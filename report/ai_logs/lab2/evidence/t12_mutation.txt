@@ -1,0 +1,49 @@
+===== S1 =====
+@@ -178,7 +178,7 @@
+         assert(cache->nr_slabs > 0);
+         cache->nr_slabs --;
+         slab->magic = 0;
+-        free_pages(pa2page(PADDR(slab)), 1);
++        // free_pages(pa2page(PADDR(slab)), 1);
+     }
+ }
+ 
+check_alloc_page() succeeded!
+slub_check: zero and null inputs
+slub_check: size classes and alignment
+slub_check: independent object data
+kernel panic at kern/mm/slub.c:223:
+    assertion failed: nr_free_pages() == expected_pages
+qemu-system-riscv64: terminating on signal 15 from pid 136 (make)
+===== S2 =====
+@@ -110,7 +110,7 @@
+     assert(initialized);
+     for (size_t i = 0; i < NR_CACHES; i ++) {
+         struct slub_cache *cache = &caches[i];
+-        if (size > cache->object_size) {
++        if (size >= cache->object_size) {
+             continue;
+         }
+         struct slab_header *slab;
+check_alloc_page() succeeded!
+slub_check: zero and null inputs
+slub_check: size classes and alignment
+kernel panic at kern/mm/slub.c:265:
+    assertion failed: slab->cache == cache && cache->object_size == size_classes[class_idx]
+qemu-system-riscv64: terminating on signal 15 from pid 136 (make)
+===== S3 =====
+@@ -73,7 +73,7 @@
+     // 空闲对象的前一个指针大小空间保存下一个空闲对象。
+     for (size_t i = cache->objects_per_slab; i > 0; i --) {
+         void *obj = (void *)((uintptr_t)slab + cache->object_offset +
+-                             (i - 1) * cache->object_size);
++                             (i - 1) * (cache->object_size / 2));
+         *(void **)obj = slab->freelist;
+         slab->freelist = obj;
+     }
+check_alloc_page() succeeded!
+slub_check: zero and null inputs
+slub_check: size classes and alignment
+kernel panic at kern/mm/slub.c:255:
+    assertion failed: ptr != NULL && ((uintptr_t)ptr & 7) == 0
+qemu-system-riscv64: terminating on signal 15 from pid 136 (make)

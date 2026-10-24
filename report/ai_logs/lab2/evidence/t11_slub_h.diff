@@ -1,0 +1,17 @@
+diff --git a/code/kern/mm/slub.h b/code/kern/mm/slub.h
+new file mode 100644
+index 0000000..092e821
+--- /dev/null
++++ b/code/kern/mm/slub.h
+@@ -0,0 +1,11 @@
++#ifndef __KERN_MM_SLUB_H__
++#define __KERN_MM_SLUB_H__
++
++#include <defs.h>
++
++void slub_init(void);
++void *kmalloc(size_t size);
++void kfree(void *ptr);
++void slub_check(void);
++
++#endif /* !__KERN_MM_SLUB_H__ */
