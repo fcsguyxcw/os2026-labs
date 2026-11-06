@@ -87,6 +87,6 @@ void exception_handler(struct trapframe *tf);
 - 评测脚本验证：`make grade` 三个测试项（Test 1 断点返回 35/35、Test 2 非法指令与未知中断/异常兜底 25/25、Test 3 持续时钟中断 40/40）全部 PASS，总分 `100/100`（见 `evidence/final_grade.txt`、`evidence/grade_context_out.txt`、`evidence/grade_illegal_out.txt`、`evidence/grade_timer_out.txt`）。
 - 差异补丁：已保存至 `evidence/t3_trap.diff`。
 
-### 给初学者的大白话原理解释
+## 大白话小结
 
-如果把 `__alltraps` 比作医院的分诊台，那么 `interrupt_handler` 和 `exception_handler` 就是急诊科和门诊科的专科医生。当外部的“闹钟”响了（`IRQ_S_TIMER` 时钟中断），急诊医生不仅要在记事本上打个勾（`ticks++`），还得赶紧定好下一次闹钟（`clock_set_next_event`），否则闹钟只响一次就再也不响了；每攒够 100 个勾就报一次时，报满 10 次就调用 `sbi_shutdown()` 下班关机。而当程序自己踩到了“断点”（`ebreak`）或念错了“咒语”（非法指令）进门诊时，硬件登记的 `sepc` 还停留在出错的那条指令上——如果医生光打印诊断书却不把 `tf->epc` 往后挪一条指令的长度（RISC-V 压缩指令 2 字节、普通指令 4 字节），CPU 出院回去又会立刻再踩同一颗雷，陷入无限死循环。
+`trap_dispatch` 按 `tf->cause` 最高位把中断和异常分给 `interrupt_handler` 和 `exception_handler`。收到 `IRQ_S_TIMER` 时钟中断时，必须先调 `clock_set_next_event()` 预约下一次定时器，再累加 `ticks`，每满 100 次打印 `100 ticks`，满 10 次输出后调 `sbi_shutdown()` 关机。处理断点（`CAUSE_BREAKPOINT`）和非法指令（`CAUSE_ILLEGAL_INSTRUCTION`）异常时，硬件 `sepc` 停在触发异常的那条指令上，打印信息后必须读取指令低 2 位判断是 2 字节压缩指令还是 4 字节标准指令，对应把 `tf->epc` 加 2 或加 4，避免 `sret` 回去重复触发同一条异常死循环。

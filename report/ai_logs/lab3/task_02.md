@@ -59,6 +59,6 @@
 - 单元测试验证：`make grade` 中 Test 1（`trap entry, register restore, and breakpoint EPC`）检验了 `ebreak` 前后 26 个通用寄存器上下文是否被分毫不差地保存和恢复，结果 `PASS (35/35)`（见 `evidence/final_grade.txt` 与 `evidence/grade_context_out.txt`）。
 - 差异补丁：已保存至 `evidence/t2_trapentry.diff`。
 
-### 给初学者的大白话原理解释
+## 大白话小结
 
-当 CPU 突然遇到中断或异常（Trap）时，就像你正在书桌上写作业突然要去接电话：为了回来能接着写，你得先把桌面上的笔、草稿纸和刚写到第几行全部拍照存进一个叫 `trapframe` 的档案袋里，这就是 `SAVE_ALL`。拍完照后，`__alltraps` 把档案袋的地址递给 C 语言的 `trap()` 函数（`move a0, sp; jal trap`），请它按章办事。等 C 函数处理完（比如把“写到第几行”往后挪一行以跳过断点指令），`RESTORE_ALL` 就照着档案袋把所有东西原封不动摆回桌面，最后一步再把装着档案袋的抽屉合上（恢复 `x2/sp`），通过 `sret` 指令回到刚才被打断的地方继续运行。之所以必须最后恢复 `sp`，是因为档案袋本身就放在 `sp` 指着的桌面上，如果先把 `sp` 改走了，剩下的寄存器就找不到档案袋在哪儿了。
+Trap 发生时硬件跳到 `__alltraps`，`SAVE_ALL` 先在栈上分配 36 个寄存器空间保存 32 个通用寄存器和 4 个 CSR。接着 `__alltraps` 通过 `move a0, sp` 把栈上 `trapframe` 的首地址作为参数传给 `trap()`。`trap()` 返回后进入 `RESTORE_ALL`：必须先借用 `s1`、`s2` 把可能被 C 代码更新过的 `sstatus` 和 `sepc` 写回 CSR，再恢复 `x1` 和 `x3..x31`（覆盖借用的 `s1`、`s2`），最后一步才恢复 `x2(sp)`，否则提前改掉 `sp` 会导致后续基于 `(sp)` 的寻址出错。

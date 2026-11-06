@@ -54,6 +54,6 @@
 - 运行时自检：`os2026.sh qemu` 启动日志输出 `memory management: best_fit_pmm_manager`、`physical memory map: memory: 0x0000000008000000, [0x0000000080000000, 0x0000000087ffffff].` 以及 `check_alloc_page() succeeded!`（见 `evidence/final_qemu.txt`）。
 - 差异补丁：已保存至 `evidence/t1_mm.diff`。
 
-### 给初学者的大白话原理解释
+## 大白话小结
 
-可以把物理内存想象成一整排带编号的储物柜（每个柜子 4KB）：开机时，操作系统先向硬件打听清楚一共有多少个柜子（DTB 探测），再把内核自己已经占用的柜子贴上“已征用”封条（`PG_reserved`），把剩下的空柜子登记到空闲账本上。Best-Fit（最佳适应）管理员每次收到借柜子申请时，都会把账本从头到尾看一遍，挑出“刚好够用、多余空位最少”的那一排连号空柜子借出去，剩下的零头继续留在账本里。归还柜子时，管理员还会检查左右相邻的柜子是不是也空着，如果空着就把它们拼成一个大号连排空位，防止柜子越用越零碎。而在 Lab 3 开启中断后，借还柜子前都要先“挂上免打扰牌”（关中断 `local_intr_save`），改完账本再恢复中断，防止查账一半被定时器中断打断导致账本错乱。
+`page_init` 是内核启动时清点物理内存的一步：先从设备树拿到内存起止范围，把 `struct Page` 描述符数组紧挨着放在内核结尾 `end` 之后，将 OpenSBI、内核镜像和描述符数组自身占用的页全部标为 `PG_reserved`，再把剩余完整空闲页交给 `best_fit_pmm_manager`。Best-Fit 按地址升序维护空闲块链表，分配时挑选满足大小且剩余最小的块，释放时与前后相邻空闲块合并。Lab 3 开启中断后，`alloc_pages` 和 `free_pages` 外层通过 `local_intr_save` / `local_intr_restore` 关中断保护空闲链表。
