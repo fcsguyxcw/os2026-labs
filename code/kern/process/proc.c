@@ -218,7 +218,214 @@ init_main(void *arg)
     return 0;
 }
 
-//LAB4 function2 YOUR CODE
+//LAB4 function2 2412172
 
+// alloc_proc - 分配一个 proc_struct，并把所有字段置成“安全空白”状态。
+//   状态 PROC_UNINIT、pid -1 表示还没登记进系统；pgdir 默认用内核页表，
+//   因为本实验里所有线程都运行在内核地址空间中。
+static struct proc_struct *
+alloc_proc(void)
+{
+    struct proc_struct *proc = kmalloc(sizeof(struct proc_struct));
+    if (proc != NULL)
+    {
+        proc->state = PROC_UNINIT;
+        proc->pid = -1;
+        proc->runs = 0;
+        proc->kstack = 0;
+        proc->need_resched = 0;
+        proc->parent = NULL;
+        proc->mm = NULL;
+        memset(&(proc->context), 0, sizeof(struct context));
+        proc->tf = NULL;
+        proc->pgdir = boot_pgdir_pa;
+        proc->flags = 0;
+        memset(proc->name, 0, PROC_NAME_LEN + 1);
+        list_init(&(proc->list_link));
+        list_init(&(proc->hash_link));
+    }
+    return proc;
+}
 
-//LAB4 function3 YOUR CODE
+// copy_mm - 按 clone_flags 共享或复制当前进程的地址空间。
+//   本实验只有内核线程，current->mm 恒为 NULL，没有用户地址空间可复制，
+//   这里只保留接口形态，lab5 引入用户进程后再真正实现。
+static int
+copy_mm(uint32_t clone_flags, struct proc_struct *proc)
+{
+    assert(current->mm == NULL);
+    /* do nothing in this project */
+    return 0;
+}
+
+// copy_thread - 在新线程内核栈顶放一份 trapframe，并设置首次被调度时的 context。
+//   context.ra = forkret：switch_to 最后的 ret 会跳到 forkret，
+//   forkret -> forkrets(tf) -> __trapret 用这份 trapframe 恢复寄存器后 sret，
+//   sret 跳到 tf->epc（kernel_thread_entry）。
+//   context.sp = tf：forkret 运行时使用的栈就在 trapframe 下方。
+static void
+copy_thread(struct proc_struct *proc, uintptr_t esp, struct trapframe *tf)
+{
+    proc->tf = (struct trapframe *)(proc->kstack + KSTACKSIZE) - 1;
+    *(proc->tf) = *tf;
+
+    // a0 是 fork 在子进程里的返回值，子进程得到 0
+    proc->tf->gpr.a0 = 0;
+    // esp 为 0 表示内核线程，trapframe 恢复后的 sp 就指向 trapframe 本身
+    proc->tf->gpr.sp = (esp == 0) ? (uintptr_t)proc->tf : esp;
+
+    proc->context.ra = (uintptr_t)forkret;
+    proc->context.sp = (uintptr_t)(proc->tf);
+}
+
+// do_fork - 以当前进程为蓝本创建一个新进程/线程。
+//   返回新进程的 pid；失败返回负错误码，并释放已经分配的资源。
+//   1. alloc_proc 得到 PCB  2. setup_kstack 分配内核栈
+//   3. copy_mm 处理地址空间  4. copy_thread 设置 trapframe 与 context
+//   5. 分配 pid 并挂入 hash 表和进程链表  6. wakeup_proc 设为 RUNNABLE
+int do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf)
+{
+    int ret = -E_NO_FREE_PROC;
+    struct proc_struct *proc;
+    if (nr_process >= MAX_PROCESS)
+    {
+        goto fork_out;
+    }
+    ret = -E_NO_MEM;
+
+    if ((proc = alloc_proc()) == NULL)
+    {
+        goto fork_out;
+    }
+    proc->parent = current;
+
+    if (setup_kstack(proc) != 0)
+    {
+        goto bad_fork_cleanup_proc;
+    }
+    if (copy_mm(clone_flags, proc) != 0)
+    {
+        goto bad_fork_cleanup_kstack;
+    }
+    copy_thread(proc, stack, tf);
+
+    // get_pid 要遍历 proc_list，分配 pid 与挂链表必须一起原子完成，
+    // 否则中断里若也创建进程，可能拿到相同 pid。
+    bool intr_flag;
+    local_intr_save(intr_flag);
+    {
+        proc->pid = get_pid();
+        hash_proc(proc);
+        list_add(&proc_list, &(proc->list_link));
+        nr_process++;
+    }
+    local_intr_restore(intr_flag);
+
+    // 所有资源就位后才设为 RUNNABLE，调度器不会看到半成品
+    wakeup_proc(proc);
+
+    ret = proc->pid;
+fork_out:
+    return ret;
+
+bad_fork_cleanup_kstack:
+    put_kstack(proc);
+bad_fork_cleanup_proc:
+    kfree(proc);
+    goto fork_out;
+}
+
+// kernel_thread - 创建一个执行 fn(arg) 的内核线程。
+//   先在栈上构造一个“半成品”trapframe：s0 = fn，s1 = arg，epc = kernel_thread_entry，
+//   再交给 do_fork 复制成真正的线程。首次运行时 sret 进入 kernel_thread_entry，
+//   它执行 a0 = s1; jalr s0，即 fn(arg)，返回后调用 do_exit。
+//   status：SPP=1 表示 sret 后仍在 S 态；SPIE=1 表示 sret 后打开中断；
+//   SIE=0 表示恢复现场的过程中不响应中断。
+int kernel_thread(int (*fn)(void *), void *arg, uint32_t clone_flags)
+{
+    struct trapframe tf;
+    memset(&tf, 0, sizeof(struct trapframe));
+    tf.gpr.s0 = (uintptr_t)fn;
+    tf.gpr.s1 = (uintptr_t)arg;
+    tf.status = (read_csr(sstatus) | SSTATUS_SPP | SSTATUS_SPIE) & ~SSTATUS_SIE;
+    tf.epc = (uintptr_t)kernel_thread_entry;
+    // 内核线程共享内核地址空间，所以带上 CLONE_VM
+    return do_fork(clone_flags | CLONE_VM, 0, &tf);
+}
+
+// proc_init - 建立进程管理的全局结构，创建 idleproc（pid 0）和 initproc（pid 1）。
+//   idleproc 不是 fork 出来的：它直接“认领”从 kern_init 一路执行下来的现场，
+//   内核栈就是 entry.S 里的 bootstack，所以它的 context/tf 都不需要设置。
+void proc_init(void)
+{
+    int i;
+
+    list_init(&proc_list);
+    for (i = 0; i < HASH_LIST_SIZE; i++)
+    {
+        list_init(hash_list + i);
+    }
+
+    if ((idleproc = alloc_proc()) == NULL)
+    {
+        panic("cannot alloc idleproc.\n");
+    }
+
+    idleproc->pid = 0;
+    idleproc->state = PROC_RUNNABLE;
+    idleproc->kstack = (uintptr_t)bootstack;
+    // idle 没有正事可做，一进入 cpu_idle 就应当让出 CPU
+    idleproc->need_resched = 1;
+    set_proc_name(idleproc, "idle");
+    nr_process++;
+
+    current = idleproc;
+
+    int pid = kernel_thread(init_main, "Hello world!!", 0);
+    if (pid <= 0)
+    {
+        panic("create init_main failed.\n");
+    }
+
+    initproc = find_proc(pid);
+    set_proc_name(initproc, "init");
+
+    assert(idleproc != NULL && idleproc->pid == 0);
+    assert(initproc != NULL && initproc->pid == 1);
+}
+
+//LAB4 function3 2412172
+
+// proc_run - 让 proc 成为当前运行的进程。
+//   关中断保证“current、satp、CPU 寄存器”三者一起切换，
+//   中途不会被时钟中断打断而看到不一致的状态。
+void proc_run(struct proc_struct *proc)
+{
+    if (proc != current)
+    {
+        bool intr_flag;
+        struct proc_struct *prev = current, *next = proc;
+        local_intr_save(intr_flag);
+        {
+            current = proc;
+            // 切换页表：写 satp（Sv39 模式 + 根页表物理页号），写法与 enable_paging 相同。
+            // libs/riscv.h 的 lsatp() 是 Sv32 遗留，不能用。
+            write_csr(satp, ((uintptr_t)SATP_MODE_SV39 << 60) | (next->pgdir >> RISCV_PGSHIFT));
+            flush_tlb();
+            switch_to(&(prev->context), &(next->context));
+        }
+        local_intr_restore(intr_flag);
+    }
+}
+
+// cpu_idle - idleproc 的主循环：永远不阻塞，只要有人需要运行就调用 schedule 让出 CPU。
+void cpu_idle(void)
+{
+    while (1)
+    {
+        if (current->need_resched)
+        {
+            schedule();
+        }
+    }
+}

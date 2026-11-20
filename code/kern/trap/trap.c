@@ -84,6 +84,131 @@ void print_regs(struct pushregs *gpr)
 extern struct mm_struct *check_mm_struct;
 
 //lab3 请补充你在lab3中的代码
+// 以下来自 lab3 分支 trap.c
+//lab3 function2 2412172
+#include <sbi.h>
+
+#ifndef SHUTDOWN_AFTER
+#define SHUTDOWN_AFTER 10
+#endif
+
+static inline uintptr_t riscv_inst_len(uintptr_t epc) {
+    uint16_t inst = *(const uint16_t *)epc;
+    return ((inst & 0x3) != 0x3) ? 2 : 4;
+}
+
+void interrupt_handler(struct trapframe *tf) {
+    intptr_t cause = (tf->cause << 1) >> 1;
+    switch (cause) {
+    case IRQ_U_SOFT:
+        cprintf("User software interrupt\n");
+        break;
+    case IRQ_S_SOFT:
+        cprintf("Supervisor software interrupt\n");
+        break;
+    case IRQ_H_SOFT:
+        cprintf("Hypervisor software interrupt\n");
+        break;
+    case IRQ_M_SOFT:
+        cprintf("Machine software interrupt\n");
+        break;
+    case IRQ_U_TIMER:
+        cprintf("User timer interrupt\n");
+        break;
+    case IRQ_S_TIMER: {
+        static int num = 0;
+        clock_set_next_event();
+        if (++ticks % TICK_NUM == 0) {
+            print_ticks();
+            num++;
+            if (num == SHUTDOWN_AFTER) {
+                sbi_shutdown();
+            }
+        }
+        break;
+    }
+    case IRQ_H_TIMER:
+        cprintf("Hypervisor timer interrupt\n");
+        break;
+    case IRQ_M_TIMER:
+        cprintf("Machine timer interrupt\n");
+        break;
+    case IRQ_U_EXT:
+        cprintf("User external interrupt\n");
+        break;
+    case IRQ_S_EXT:
+        cprintf("Supervisor external interrupt\n");
+        break;
+    case IRQ_H_EXT:
+        cprintf("Hypervisor external interrupt\n");
+        break;
+    case IRQ_M_EXT:
+        cprintf("Machine external interrupt\n");
+        break;
+    default:
+        cprintf("Unknown interrupt: cause %d\n", (int)cause);
+        print_trapframe(tf);
+        break;
+    }
+}
+
+void exception_handler(struct trapframe *tf) {
+    switch (tf->cause) {
+    case CAUSE_MISALIGNED_FETCH:
+        cprintf("Instruction address misaligned\n");
+        print_trapframe(tf);
+        break;
+    case CAUSE_FETCH_ACCESS:
+        cprintf("Instruction access fault\n");
+        print_trapframe(tf);
+        break;
+    case CAUSE_ILLEGAL_INSTRUCTION:
+        cprintf("Exception type: Illegal instruction\n");
+        cprintf("Illegal instruction at 0x%08x\n", tf->epc);
+        tf->epc += riscv_inst_len(tf->epc);
+        break;
+    case CAUSE_BREAKPOINT:
+        cprintf("Exception type: breakpoint\n");
+        cprintf("Breakpoint at 0x%08x\n", tf->epc);
+        tf->epc += riscv_inst_len(tf->epc);
+        break;
+    case CAUSE_MISALIGNED_LOAD:
+        cprintf("Load address misaligned\n");
+        print_trapframe(tf);
+        break;
+    case CAUSE_LOAD_ACCESS:
+        cprintf("Load access fault\n");
+        print_trapframe(tf);
+        break;
+    case CAUSE_MISALIGNED_STORE:
+        cprintf("AMO address misaligned\n");
+        print_trapframe(tf);
+        break;
+    case CAUSE_STORE_ACCESS:
+        cprintf("Store/AMO access fault\n");
+        print_trapframe(tf);
+        break;
+    case CAUSE_USER_ECALL:
+        cprintf("Environment call from U-mode\n");
+        print_trapframe(tf);
+        break;
+    case CAUSE_SUPERVISOR_ECALL:
+        cprintf("Environment call from S-mode\n");
+        print_trapframe(tf);
+        break;
+    case CAUSE_HYPERVISOR_ECALL:
+        cprintf("Environment call from H-mode\n");
+        print_trapframe(tf);
+        break;
+    case CAUSE_MACHINE_ECALL:
+        cprintf("Environment call from M-mode\n");
+        print_trapframe(tf);
+        break;
+    default:
+        print_trapframe(tf);
+        break;
+    }
+}
 
 
 

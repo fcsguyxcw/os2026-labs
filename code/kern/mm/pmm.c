@@ -88,6 +88,54 @@ size_t nr_free_pages(void)
 }
 
 //lab2 请补充你在lab2中的代码
+// lab2 function1 2412172：page_init（来自 lab2 分支 pmm.c）
+static void page_init(void) {
+    uint64_t mem_base = get_memory_base();
+    uint64_t mem_size = get_memory_size();
+    uint64_t mem_end = mem_base + mem_size;
+
+    if (mem_base == 0 || mem_size == 0 || mem_end <= mem_base) {
+        panic("invalid physical memory range: base 0x%016lx, size 0x%016lx",
+              mem_base, mem_size);
+    }
+    if (mem_base != DRAM_BASE) {
+        panic("unsupported physical memory base: 0x%016lx", mem_base);
+    }
+
+    cprintf("physical memory map:\n");
+    cprintf("  memory: 0x%016lx, [0x%016lx, 0x%016lx].\n",
+            mem_size, mem_base, mem_end - 1);
+
+    va_pa_offset = PHYSICAL_MEMORY_OFFSET;
+    // lab4 的 memlayout.h 去掉了 PHYSICAL_MEMORY_END，用 KERNTOP 换算出同一个物理上界 0x88000000
+    uint64_t phys_mem_end = KERNTOP - PHYSICAL_MEMORY_OFFSET;
+    if (mem_end > phys_mem_end) {
+        mem_end = phys_mem_end;
+    }
+    mem_end = ROUNDDOWN(mem_end, PGSIZE);
+    npage = PPN(mem_end);
+
+    extern char end[];
+    pages = (struct Page *)ROUNDUP((uintptr_t)end, PGSIZE);
+    uintptr_t descriptors_end = PADDR(&pages[npage - nbase]);
+    if (descriptors_end > mem_end) {
+        panic("page descriptor array exceeds physical memory: "
+              "array end 0x%016lx, memory end 0x%016lx",
+              descriptors_end, mem_end);
+    }
+    for (size_t i = 0; i < npage - nbase; i ++) {
+        SetPageReserved(&pages[i]);
+    }
+
+    uintptr_t freemem = ROUNDUP(descriptors_end, PGSIZE);
+    if (freemem < mem_end) {
+        init_memmap(pa2page(freemem), (mem_end - freemem) / PGSIZE);
+    } else {
+        cprintf("page_init: no complete free pages remain after page descriptors "
+                "(free start 0x%016lx, memory end 0x%016lx).\n",
+                freemem, mem_end);
+    }
+}
 
 static void enable_paging(void)
 {
@@ -220,7 +268,66 @@ struct Page *get_page(pde_t *pgdir, uintptr_t la, pte_t **ptep_store)
     return NULL;
 }
 
-//LAB4 function1 YOUR CODE
+//LAB4 function1 2412172
+
+// page_remove_pte - 撤销 ptep 指向的这一条映射：
+//   物理页引用计数减一，减到 0 说明再没有页表项指向它，归还给分配器；
+//   清空页表项，并让该虚拟地址在 TLB 里的旧翻译失效。
+static inline void page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep)
+{
+    if (*ptep & PTE_V)
+    {
+        struct Page *page = pte2page(*ptep);
+        if (page_ref_dec(page) == 0)
+        {
+            free_page(page);
+        }
+        *ptep = 0;
+        tlb_invalidate(pgdir, la);
+    }
+}
+
+// page_remove - 删除线性地址 la 的映射；la 未映射时什么也不做（幂等）。
+// get_pte 的 create 传 0：删除操作不应为了查找而分配中间级页表。
+void page_remove(pde_t *pgdir, uintptr_t la)
+{
+    pte_t *ptep = get_pte(pgdir, la, 0);
+    if (ptep != NULL)
+    {
+        page_remove_pte(pgdir, la, ptep);
+    }
+}
+
+// page_insert - 把物理页 page 映射到线性地址 la，权限为 perm。
+//   成功返回 0；中间级页表分配失败返回 -E_NO_MEM，此时没有修改任何映射。
+//   先给新页加引用再处理旧映射：若 la 原来就映射到同一页，
+//   先加后减保证引用计数不会中途变成 0 而被误释放。
+int page_insert(pde_t *pgdir, struct Page *page, uintptr_t la, uint32_t perm)
+{
+    pte_t *ptep = get_pte(pgdir, la, 1);
+    if (ptep == NULL)
+    {
+        return -E_NO_MEM;
+    }
+    page_ref_inc(page);
+    if (*ptep & PTE_V)
+    {
+        struct Page *old = pte2page(*ptep);
+        if (old == page)
+        {
+            // 同一页只是更新权限，映射数量不变
+            page_ref_dec(page);
+        }
+        else
+        {
+            // 原来映射到别的页：先撤销旧映射（旧页引用减一，必要时释放）
+            page_remove_pte(pgdir, la, ptep);
+        }
+    }
+    *ptep = pte_create(page2ppn(page), PTE_V | perm);
+    tlb_invalidate(pgdir, la);
+    return 0;
+}
 
 
 
