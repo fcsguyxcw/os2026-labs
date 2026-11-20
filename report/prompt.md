@@ -1,6 +1,6 @@
 # Lab 4 提示词汇总（PROMPT / RELY / GUARANTEE / SPECIFICATION）
 
-本文件汇总 Lab 4 在依赖迁移和三个功能模块中使用的四段式提示词。生成过程中遇到的问题见 [ai_logs/lab4/bugs.md](ai_logs/lab4/bugs.md)。
+本文件汇总 Lab 4 在依赖迁移和三个功能模块中最终使用的四段式提示词（其中迁移任务为排查完头文件与宏名差异后的修订版，报错记录见 [ai_logs/lab4/bugs.md](ai_logs/lab4/bugs.md)）。
 
 ---
 
@@ -11,7 +11,7 @@
 ````markdown
 ## PROMPT
 
-你是 OS Lab 4 的 Implementation Agent。工作目录为 `os2026-labs`（分支 `lab4`），源码位于 `code/`。
+当前工作目录为 `os2026-labs`（`lab4` 分支），源码位于 `code/`。
 指导书要求：“本实验依赖实验2/3。请使用你此前设计的提示词生成相应实验代码，并将生成结果填写到本实验代码中标有 lab2/lab3 注释的对应位置，确保代码能够正确编译。”
 请把 `lab2`、`lab3` 分支中已经通过检查的实现填入以下位置，保留原注释，并在其后加 `lab2 functionN 2412172` / `lab3 functionN 2412172` 标记：
 1. `code/kern/mm/pmm.c` 的 `//lab2 请补充你在lab2中的代码`：`page_init()`。

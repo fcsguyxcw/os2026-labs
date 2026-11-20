@@ -12,7 +12,7 @@
 
 | 成员 | 负责的练习/模块 |
 |------|----------------|
-| 2412172-许城玮 | 独立完成全部编程练习（Lab 2/3 代码迁移、功能模块一虚拟内存页操作、功能模块二进程创建及初始化、功能模块三进程调度）、四段式 Spec 编写、测试验证及实验报告 |
+| 2412172-许城玮 | 独立完成 Lab 4 全部内容：Lab 2/3 代码迁移、三个功能模块实现、测试验证及实验报告 |
 
 ---
 
@@ -32,13 +32,13 @@
 
 | 成员 | AI 编程工具 | 底层模型 | 备注 |
 |------|------------|---------|------|
-| 2412172-许城玮 | Claude Code | Claude Opus 5.5 | 阅读骨架与测试、四段式 Spec 编写、代码生成、Docker 构建与 `make grade` 验证 |
+| 2412172-许城玮 | Claude Code | Claude Opus 4.5 | 读骨架代码与测试用例、按四段式提示词生成代码、排查编译报错并运行 `make grade` 验证 |
 
 ### 软硬件与容器环境
 
 - **宿主机与容器**：macOS（Apple Silicon）+ OrbStack Docker，镜像 `os2026-dbg`（沿用 Lab 2/3 的容器环境，入口脚本 `os2026.sh`）。
 - **工具链与模拟器版本**：`riscv64-unknown-elf-gcc 13.2.0`、`QEMU 4.1.1`、引导固件 `OpenSBI v0.4`（Runtime SBI Version `0.1`）。
-- **课程骨架**：`oslab.mobisys.top/lab2026/lab4.zip`（72598 字节，服务器更新时间 2026-11-10 11:28，sha256 `7a92f243…aebceba2`），原样导入为提交 `cd09b05`。
+- **课程骨架**：使用课程下发的 `lab4.zip`，原样导入至 `lab4` 分支后开始开发。
 
 ---
 
@@ -81,10 +81,18 @@ kern_init
 
 **负责人：** 2412172-许城玮
 
-- `kern/mm/pmm.c` 的 `//lab2` 处填入 Lab 2 的 `page_init()`。Lab 4 的 `memlayout.h` 没有 `PHYSICAL_MEMORY_END`，改为用 `KERNTOP - PHYSICAL_MEMORY_OFFSET` 换算出同一上界 `0x88000000`（见 [bugs.md：Bug 2](ai_logs/lab4/bugs.md)）。
-- `kern/mm/default_pmm.c` 的 `//lab2` 处填入 Lab 2 的 Best-Fit 分配器。骨架的 `pmm.c` 固定绑定 `default_pmm_manager`，且 `default_pmm.c` 已含 `#include <best_fit_pmm.h>` 和 `basic_check` / `best_fit_check`，因此把 Lab 2 的实现以 `default_pmm_manager` 为名导出（`.name` 仍为 `best_fit_pmm_manager`），并补回 Lab 2 的 `best_fit_pmm.h`（见 [Bug 3](ai_logs/lab4/bugs.md)）。
-- `kern/trap/trap.c` 与 `kern/trap/trapentry.S` 的 `//lab3` 处填入 Lab 3 的 `interrupt_handler` / `exception_handler`、`RESTORE_ALL` 和 `__alltraps` 中的 `move a0, sp; jal trap`。Lab 4 的 `riscv.h` 改了三个异常号宏名，同步替换（见 [Bug 1](ai_logs/lab4/bugs.md)）。
-- 提示词见 [prompt.md：一、迁移 Lab 2/3 代码](prompt.md#task01)。
+按指导书要求，先把 Lab 2 的 `page_init()` / Best-Fit 分配器，以及 Lab 3 的 `interrupt_handler` / `exception_handler`、`RESTORE_ALL` 和 `__alltraps` 入口迁移进 Lab 4 骨架。最终提示词见 [prompt.md：一、迁移 Lab 2/3 代码](prompt.md#task01)。
+
+#### 实现迭代过程
+
+这部分踩了几个头文件和符号差异的坑，改了两轮才编译通过（详细报错见 [ai_logs/lab4/bugs.md](ai_logs/lab4/bugs.md)）：
+
+- **第一次迭代（直接迁移旧代码）**：
+  - 读骨架时先发现 `kern/mm/default_pmm.c` 开头 `#include <best_fit_pmm.h>`，但目录下没有这个头文件，且 `pmm.c` 写死了绑定 `&default_pmm_manager`。
+  - 把 Lab 2/3 的代码原样填进去编译，直接报了两处未定义符号错误：一是 `trap.c` 里 Lab 3 用的 `CAUSE_FAULT_FETCH` / `CAUSE_FAULT_LOAD` / `CAUSE_FAULT_STORE` 在 Lab 4 的 `riscv.h` 里改名成了 `CAUSE_*_ACCESS`；二是 `pmm.c` 里 `page_init()` 用的 `PHYSICAL_MEMORY_END` 在 Lab 4 的 `memlayout.h` 里被删掉了。
+- **第二次迭代（补齐差异约束）**：
+  - 在提示词里要求先对比新旧头文件差异再改代码，不修改骨架原有的头文件和自检函数：从 Lab 2 补回 `best_fit_pmm.h`，把 Best-Fit 实现以 `default_pmm_manager` 导出（`.name` 仍为 `"best_fit_pmm_manager"`）；`page_init()` 改用 `KERNTOP - PHYSICAL_MEMORY_OFFSET` 换算同一物理上界 `0x88000000`；`trap.c` 同步替换三个异常号宏名。
+  - 重新编译通过，启动后 `check_alloc_page()` 通过，时钟中断正常。
 
 ---
 
@@ -110,7 +118,7 @@ kern_init
 
 #### 实现迭代过程
 
-一次生成即通过 `check_pgdir()`、`check_boot_pgdir()` 和 `[Test PMM]`。Spec 中预先写明了“同页重插不得释放”和“删除不分配中间页表”两条约束。
+这一块逻辑比较集中，写提示词前先看了 `tools/test_lab4.c`，把“同页重插不能误释放”和“删除时不分配中间页表”两条边界直接写进了约束里。生成代码后编译运行，`check_pgdir()`、`check_boot_pgdir()` 和 `[Test PMM]` 一次通过，没有额外返工。
 
 ---
 
@@ -142,7 +150,7 @@ kern_init
 
 #### 实现迭代过程
 
-一次生成即通过 `[Test Process Create]`。Spec 中写明了测试对 idleproc 各字段的断言，以及 `initproc->parent == idleproc`（因此 `do_fork` 必须设 `proc->parent = current`，且 `proc_init` 必须先 `current = idleproc` 再创建 initproc）。
+写提示词时先对照 `test_lab4_process_create` 理清了 `idleproc` 各个字段的初始值要求，也特意标明了 `proc_init` 必须先设 `current = idleproc` 再调用 `kernel_thread`（否则 `initproc->parent` 不等于 `idleproc`）。代码生成后核对了一遍 `do_fork` 的失败清理路径，运行 `[Test Process Create]` 通过。
 
 ---
 
@@ -169,7 +177,7 @@ kern_init
 
 #### 实现迭代过程
 
-一次生成即通过 `[Test Schedule]`。`test_lab4_schedule` 在 initproc 中再创建两个线程并调度 8 次，要求两个线程都运行过；它们以 `list_add` 头插进 `proc_list`，链表顺序为 `头 → t2 → t1 → init`，从 init 出发轮转能依次轮到每个线程。
+这部分最怕的是页表寄存器 `satp` 写错（踩进 `lsatp()` 的坑）和 `switch_to` 寄存器偏移和 `struct context` 对不上。提示词里把这两点都写死了，生成后对照 `proc.h` 核了一遍 14 个寄存器的偏移顺序，跑 `[Test Schedule]` 顺利通过。`test_lab4_schedule` 会在 initproc 里再起两个线程轮流让出 CPU，因为 `list_add` 是头插，链表顺序是 `头 → t2 → t1 → init`，从 init 往后轮转刚好能依次调度到两个新线程。
 
 ---
 
@@ -227,6 +235,6 @@ kern_init
 
 ### AI 协作开发的经验
 
-1. **先读测试再写 Spec**：`tools/test_lab4.c` 对 idleproc 的字段做了很细的断言（`kstack == bootstack`、`context.ra == 0`、`tf == NULL`），还要求 `initproc->parent == idleproc`。把这些断言直接写进 SPECIFICATION 的 Postconditions，AI 生成的 `alloc_proc` / `proc_init` 一次就满足要求。
-2. **跨实验迁移代码要先对比头文件**：Lab 4 的 `riscv.h` 改了异常宏名，`memlayout.h` 去掉了 `PHYSICAL_MEMORY_END`，`default_pmm.c` 的 include 和 `pmm.c` 绑定的管理器名都变了。这类问题在编译时一次报出来，但最好在迁移提示词里先让 AI 列出依赖的宏和符号再动手。
-3. **把指导书的“陷阱提示”写进 RELY**：指导书提醒 `lsatp()` 是 Sv32 遗留不能用，写进 RELY 后生成的 `proc_run` 直接按 `enable_paging()` 的方式写 `satp`。
+1. **搬旧实验代码不能直接让 AI 硬贴**：这次最浪费时间的地方反而是最简单的 Lab 2/3 迁移。直接把旧代码迁进来，结果头文件里的宏名（`CAUSE_FAULT_*` → `CAUSE_*_ACCESS`）、`PHYSICAL_MEMORY_END` 和 `default_pmm_manager` 都和之前不一样，编译直接报错。以后跨实验迁移，先让 AI 对比新旧头文件差异再动手会省事很多。
+2. **先看测试用例和指导书里的坑，再写提示词**：后面三个功能模块之所以没怎么返工，主要是动工前把 `tools/test_lab4.c` 的断言和指导书的提示（比如 `lsatp()` 是 Sv32 遗留不能用、`idleproc` 不在 `proc_list` 里、`page_insert` 同页重插不能先释放）提前写进了提示词。约束给够了，AI 很少在细节上自己发挥出错。
+3. **测试全绿不等于自己真的懂了**：AI 生成代码和跑 `make grade` 很快，但像 `context` 和 `trapframe` 的区别、新线程第一次怎么从 `switch_to` 一路走到 `init_main`，如果只看测试通过不自己顺一遍调用链，很容易一知半解。生成完之后自己对照代码把执行链画出来，才是真正把这部分吃透的关键。
